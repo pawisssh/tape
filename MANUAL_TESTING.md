@@ -246,9 +246,9 @@ from before this round of changes (Phase 4 added new files/settings).
 
 | Step | Date | Pass/Fail | Notes |
 |---|---|---|---|
-| A (enable + permission grant) | | | |
-| B (end-to-end note with real server) | | | |
-| C (graceful fallback, server down/unreachable) | | | |
+| A (enable + permission grant) | 2026-08-26 | Pass | |
+| B (end-to-end note with real server) | 2026-08-26 | Pass | |
+| C (graceful fallback, server down/unreachable) | 2026-08-26 | Pass | |
 
 ---
 

@@ -53,6 +53,7 @@ export default defineConfig({
                 {
                     src: "extension/side-panel/side-panel.js",
                     dest: "extension/side-panel",
+                    rename: { stripBase: 2 },
                 },
             ],
         }),

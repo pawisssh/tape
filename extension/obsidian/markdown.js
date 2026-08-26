@@ -95,6 +95,38 @@ export function formatDuration(startIso, endIso) {
 }
 
 /**
+ * Elapsed time from meeting start to an event, formatted for citation in LLM-generated
+ * summary bullets: "M:SS" for elapsed times under an hour, "H:MM:SS" at or above one
+ * hour (e.g. "0:50", "41:12", "1:23:45"). Negative elapsed (event timestamp before
+ * meeting start — clock skew right at call start) clamps to "0:00" rather than being
+ * dropped. Unparseable input returns `null` (not a string sentinel) so the caller can
+ * decide whether to print a bracket at all.
+ * @param {string} startIso
+ * @param {string} eventIso
+ * @returns {string | null}
+ */
+export function formatElapsedTime(startIso, eventIso) {
+    const start = new Date(startIso).getTime()
+    const event = new Date(eventIso).getTime()
+    if (isNaN(start) || isNaN(event)) {
+        return null
+    }
+    let totalSeconds = Math.round((event - start) / 1000)
+    if (totalSeconds < 0) {
+        totalSeconds = 0
+    }
+    const hours = Math.floor(totalSeconds / 3600)
+    const minutes = Math.floor((totalSeconds % 3600) / 60)
+    const seconds = totalSeconds % 60
+    const ss = String(seconds).padStart(2, "0")
+    if (hours > 0) {
+        const mm = String(minutes).padStart(2, "0")
+        return `${hours}:${mm}:${ss}`
+    }
+    return `${minutes}:${ss}`
+}
+
+/**
  * Build the destination filename (including the .md extension) from a template.
  * Each token's *value* is sanitized individually before substitution (so a "/" or ":"
  * inside a meeting title never becomes a path separator or otherwise corrupts the

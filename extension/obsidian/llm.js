@@ -14,7 +14,7 @@
 // chrome.*/network dependency and are unit-tested directly in tests/llm.test.mjs.
 // enrichWithLlm is the only function here that touches the network.
 
-import { groupTranscriptBySpeaker, getMeetingTitle } from "./markdown.js"
+import { groupTranscriptBySpeaker, getMeetingTitle, formatElapsedTime } from "./markdown.js"
 
 /** @type {ObsidianLlmEndpoint} */
 export const DEFAULT_LLM_ENDPOINT = "http://localhost:1234/v1/chat/completions"
@@ -32,22 +32,31 @@ const SYSTEM_PROMPT = `You are an assistant that turns a raw video-call transcri
 
 Read the transcript the user provides and respond with EXACTLY ONE JSON object and nothing else: no prose before or after it, no markdown code fences, no <think> or other reasoning block, no explanation of what you are doing.
 
-The JSON object must match this shape (all keys present; arrays may be empty; "owner" and "dueDate" are optional per action item):
+Each transcript line is prefixed with an elapsed-time marker — "[M:SS]" for meetings under an hour, "[H:MM:SS]" for meetings an hour or longer — showing how far into the meeting that line was spoken. Whenever you fill in a "timestamp" field below, copy that bracket's value EXACTLY as it appears on the transcript line it came from. Never invent, estimate, or round a timestamp. If you cannot confidently attribute an item to one specific transcript line, omit the "timestamp" field entirely rather than guess.
+
+The JSON object must match this shape (all keys present; arrays may be empty; every "timestamp" field is optional):
 {
   "title": "string, <=60 chars, must not contain / : # [ ] | ^",
-  "summary": "string, 2-5 sentences, markdown allowed",
-  "topics": [{"heading": "string", "points": ["string"]}],
-  "actionItems": [{"task": "string", "owner": "string (optional)", "dueDate": "string (optional)"}],
-  "decisions": ["string"],
-  "openQuestions": ["string"],
-  "nextSteps": ["string"]
+  "actionItems": [{"task": "string", "timestamp": "string (optional)"}],
+  "decisions": [{"text": "string", "timestamp": "string (optional)"}],
+  "openQuestions": [{"text": "string", "timestamp": "string (optional)"}],
+  "nextSteps": [{"text": "string", "timestamp": "string (optional)"}],
+  "keyTakeaways": [{"lead": "string", "detail": "string"}],
+  "topics": [{"heading": "string", "points": [{"text": "string", "timestamp": "string (optional)"}]}]
 }
+
+Field notes:
+- "actionItems" are concrete follow-up tasks, phrased as the task itself. Do not include an owner or a due date anywhere — this schema has no field for either.
+- "decisions" are choices the group explicitly settled on.
+- "openQuestions" are things left unresolved at the end of the meeting.
+- "nextSteps" are what happens after the meeting as a whole (the overall plan or sequence going forward), distinct from "actionItems" (individual tasks).
+- "keyTakeaways" is a short bulleted TL;DR of the meeting: each item is a short bold "lead" phrase followed by one sentence of "detail". This replaces a prose summary — never write a paragraph-style summary anywhere in your response. "keyTakeaways" items are synthesized across the whole meeting, so never include a "timestamp" for them.
+- "topics" groups the discussion into a few natural themes, each with its own list of timestamped "points".
 
 Rules:
 - Leave any array empty ([]) rather than invent content that is not clearly supported by the transcript.
-- Never invent an "owner" or "dueDate" for an action item — only include them when a name or date is explicitly stated in the transcript for that specific task.
-- Write "title", "summary", and every other string field in the same language the transcript itself is written in.
-- Only populate "topics" when the meeting naturally splits into a few distinct themes or agenda items. For a short or single-topic meeting, leave "topics" as an empty array and rely on "summary" instead.
+- Write "title" and every other string field in the same language the transcript itself is written in.
+- Only populate "topics" when the meeting naturally splits into a few distinct themes or agenda items. For a short or single-topic meeting, leave "topics" as an empty array.
 - Do not wrap the JSON in a code fence, and do not include any text — reasoning, apologies, or otherwise — before or after the JSON object.`
 
 /**
@@ -60,7 +69,10 @@ function buildUserPrompt(meeting) {
     const groups = groupTranscriptBySpeaker(meeting.transcript)
 
     const transcriptText = groups.length > 0
-        ? groups.map((g) => `${g.personName}: ${g.text}`).join("\n")
+        ? groups.map((g) => {
+            const elapsed = formatElapsedTime(meeting.meetingStartTimestamp, g.timestamp)
+            return elapsed ? `[${elapsed}] ${g.personName}: ${g.text}` : `${g.personName}: ${g.text}`
+        }).join("\n")
         : "(no transcript captured)"
 
     const chatMessages = meeting.chatMessages || []
@@ -71,6 +83,8 @@ function buildUserPrompt(meeting) {
     const lines = [
         `Meeting title: ${title}`,
         `Platform: ${software}`,
+        "",
+        "Each transcript line below is prefixed with [M:SS] or [H:MM:SS], the elapsed time from the start of the meeting.",
         "",
         "Transcript:",
         transcriptText,
@@ -207,20 +221,112 @@ function asArray(value) {
     return Array.isArray(value) ? value : []
 }
 
+// Light validator for a "timestamp" field coming back from the model: matches
+// "M:SS"/"H:MM:SS" (1-3 digit hour/minute component, 2-digit seconds/minutes each
+// 00-59), rejects garbage like "unknown" or "12:65". This is the single chokepoint
+// every renderer below goes through to decide whether to print a "[...]" suffix —
+// "drop the bracket, keep the text" is enforced here once rather than re-implemented
+// per section.
+const TIMESTAMP_REGEX = /^\d{1,3}:[0-5]\d(:[0-5]\d)?$/
+
 /**
- * @param {unknown} points
- * @returns {string[]}
+ * @param {unknown} timestamp
+ * @returns {string} " [M:SS]"/" [H:MM:SS]" if valid, else ""
  */
-function renderTopicPoints(points) {
-    return asArray(points)
-        .map((p) => asNonEmptyString(p))
-        .filter((p) => typeof p === "string")
+function formatTimestampSuffix(timestamp) {
+    return typeof timestamp === "string" && TIMESTAMP_REGEX.test(timestamp) ? ` [${timestamp}]` : ""
 }
 
 /**
- * Render the "## Key topics" section. A topic missing a heading, or whose points array
- * has no usable (non-empty-string) entries, is dropped entirely rather than rendered
- * with a blank heading or an empty bullet list.
+ * Render one `- text [timestamp]` bullet from an item shaped like `{[textKey]: string,
+ * timestamp?: string}`. Drops the item (returns `null`) if its text field is
+ * empty/non-string; the timestamp suffix is omitted (not the whole bullet) if the
+ * timestamp is missing or fails validation.
+ * @param {unknown} item
+ * @param {string} textKey
+ * @returns {string | null}
+ */
+function renderTimestampedBullet(item, textKey) {
+    if (!item || typeof item !== "object") {
+        return null
+    }
+    const text = asNonEmptyString(/** @type {any} */ (item)[textKey])
+    if (!text) {
+        return null
+    }
+    return `- ${text}${formatTimestampSuffix(/** @type {any} */ (item).timestamp)}`
+}
+
+/**
+ * Render a section of timestamped bullets (decisions/openQuestions/nextSteps all share
+ * this shape: `{text, timestamp?}`). Non-object / missing-text entries are dropped; the
+ * whole section is omitted if nothing remains.
+ * @param {string} heading e.g. "## Decisions made"
+ * @param {unknown} items
+ * @returns {string}
+ */
+function renderTimestampedListSection(heading, items) {
+    const lines = asArray(items)
+        .map((item) => renderTimestampedBullet(item, "text"))
+        .filter((line) => typeof line === "string")
+    return lines.length > 0 ? [heading, "", lines.join("\n")].join("\n") : ""
+}
+
+/**
+ * Render the "## Action items" section as a checklist: `- [ ] task [M:SS]`. No
+ * owner/due-date handling at all — that metadata was removed from the schema entirely.
+ * @param {unknown} actionItems
+ * @returns {string}
+ */
+function renderActionItemsSection(actionItems) {
+    const lines = asArray(actionItems)
+        .map((item) => {
+            if (!item || typeof item !== "object") {
+                return null
+            }
+            const task = asNonEmptyString(/** @type {any} */ (item).task)
+            if (!task) {
+                return null
+            }
+            return `- [ ] ${task}${formatTimestampSuffix(/** @type {any} */ (item).timestamp)}`
+        })
+        .filter((line) => typeof line === "string")
+    return lines.length > 0 ? ["## Action items", "", lines.join("\n")].join("\n") : ""
+}
+
+/**
+ * Render the "## Key Takeaways" section: a bold-lead-in TL;DR list, `- **Lead:**
+ * Detail.`. An item is dropped unless BOTH `lead` and `detail` are non-empty strings.
+ * Stray trailing punctuation/whitespace is trimmed off `lead` before formatting so it
+ * never produces a doubled colon (e.g. a model-supplied "Lead:" would otherwise render
+ * as "**Lead::**"). Never given a timestamp suffix — these items are synthesized across
+ * the whole meeting, not tied to one transcript moment.
+ * @param {unknown} keyTakeaways
+ * @returns {string}
+ */
+function renderKeyTakeawaysSection(keyTakeaways) {
+    const lines = asArray(keyTakeaways)
+        .map((item) => {
+            if (!item || typeof item !== "object") {
+                return null
+            }
+            const lead = asNonEmptyString(/** @type {any} */ (item).lead)
+            const detail = asNonEmptyString(/** @type {any} */ (item).detail)
+            if (!lead || !detail) {
+                return null
+            }
+            const cleanLead = lead.replace(/[\s.:]+$/u, "")
+            return `- **${cleanLead}:** ${detail}`
+        })
+        .filter((line) => typeof line === "string")
+    return lines.length > 0 ? ["## Key Takeaways", "", lines.join("\n")].join("\n") : ""
+}
+
+/**
+ * Render the "## Topics" section. A topic missing a heading, or whose points array has
+ * no usable entries (each point needs a non-empty "text"), is dropped entirely rather
+ * than rendered with a blank heading or an empty bullet list. Points are rendered via
+ * the shared timestamped-bullet helper.
  * @param {unknown} topics
  * @returns {string}
  */
@@ -231,63 +337,25 @@ function renderTopicsSection(topics) {
             continue
         }
         const heading = asNonEmptyString(/** @type {any} */ (topic).heading)
-        const points = renderTopicPoints(/** @type {any} */ (topic).points)
+        const points = asArray(/** @type {any} */ (topic).points)
+            .map((point) => renderTimestampedBullet(point, "text"))
+            .filter((line) => typeof line === "string")
         if (!heading || points.length === 0) {
             continue
         }
-        rendered.push([`### ${heading}`, "", ...points.map((p) => `- ${p}`)].join("\n"))
+        rendered.push([`### ${heading}`, "", points.join("\n")].join("\n"))
     }
-    return rendered.length > 0 ? ["## Key topics", "", rendered.join("\n\n")].join("\n") : ""
-}
-
-/**
- * Render the "## Action items" section as a checklist. "owner"/"dueDate" are only
- * appended when present — an action item with neither renders as a plain checklist line.
- * @param {unknown} actionItems
- * @returns {string}
- */
-function renderActionItemsSection(actionItems) {
-    const lines = []
-    for (const item of asArray(actionItems)) {
-        if (!item || typeof item !== "object") {
-            continue
-        }
-        const task = asNonEmptyString(/** @type {any} */ (item).task)
-        if (!task) {
-            continue
-        }
-        const owner = asNonEmptyString(/** @type {any} */ (item).owner)
-        const dueDate = asNonEmptyString(/** @type {any} */ (item).dueDate)
-        const meta = []
-        if (owner) meta.push(`Owner: ${owner}`)
-        if (dueDate) meta.push(`Due: ${dueDate}`)
-        const suffix = meta.length > 0 ? ` (${meta.join(", ")})` : ""
-        lines.push(`- [ ] ${task}${suffix}`)
-    }
-    return lines.length > 0 ? ["## Action items", "", lines.join("\n")].join("\n") : ""
-}
-
-/**
- * Render a simple bullet-list section from an array of strings. Non-string / empty
- * entries are dropped; the whole section is omitted if nothing remains.
- * @param {string} heading e.g. "## Decisions"
- * @param {unknown} items
- * @returns {string}
- */
-function renderBulletSection(heading, items) {
-    const lines = asArray(items)
-        .map((i) => asNonEmptyString(i))
-        .filter((i) => typeof i === "string")
-        .map((i) => `- ${i}`)
-    return lines.length > 0 ? [heading, "", lines.join("\n")].join("\n") : ""
+    return rendered.length > 0 ? ["## Topics", "", rendered.join("\n\n")].join("\n") : ""
 }
 
 /**
  * Render each field of a parsed LLM response as an independent markdown section, in a
- * fixed order: Summary, Key topics, Action items, Decisions, Open questions, Next
- * steps. Any missing/malformed field is simply omitted rather than crashing — this
- * function never throws, so a response with only `summary` still produces a valid,
- * shorter markdown fragment. Returns "" if nothing at all was renderable.
+ * fixed order: Action items, Decisions made, Open questions, Next steps, Key
+ * Takeaways, Topics. There is no "Summary" section — it was removed from the schema
+ * entirely in favor of "Key Takeaways". Any missing/malformed field is simply omitted
+ * rather than crashing — this function never throws, so a response with only one
+ * populated field still produces a valid, shorter markdown fragment. Returns "" if
+ * nothing at all was renderable.
  * @param {Object | null | undefined} parsed
  * @returns {string}
  */
@@ -299,25 +367,23 @@ export function renderSummaryMarkdown(parsed) {
 
     const sections = []
 
-    const summary = asNonEmptyString(p.summary)
-    if (summary) {
-        sections.push(["## Summary", "", summary].join("\n"))
-    }
-
-    const topicsSection = renderTopicsSection(p.topics)
-    if (topicsSection) sections.push(topicsSection)
-
     const actionItemsSection = renderActionItemsSection(p.actionItems)
     if (actionItemsSection) sections.push(actionItemsSection)
 
-    const decisionsSection = renderBulletSection("## Decisions", p.decisions)
+    const decisionsSection = renderTimestampedListSection("## Decisions made", p.decisions)
     if (decisionsSection) sections.push(decisionsSection)
 
-    const openQuestionsSection = renderBulletSection("## Open questions", p.openQuestions)
+    const openQuestionsSection = renderTimestampedListSection("## Open questions", p.openQuestions)
     if (openQuestionsSection) sections.push(openQuestionsSection)
 
-    const nextStepsSection = renderBulletSection("## Next steps", p.nextSteps)
+    const nextStepsSection = renderTimestampedListSection("## Next steps", p.nextSteps)
     if (nextStepsSection) sections.push(nextStepsSection)
+
+    const keyTakeawaysSection = renderKeyTakeawaysSection(p.keyTakeaways)
+    if (keyTakeawaysSection) sections.push(keyTakeawaysSection)
+
+    const topicsSection = renderTopicsSection(p.topics)
+    if (topicsSection) sections.push(topicsSection)
 
     return sections.join("\n\n")
 }

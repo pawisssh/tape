@@ -100,49 +100,51 @@ describe("extractJsonFromResponse", () => {
 })
 
 describe("renderSummaryMarkdown", () => {
-    test("renders only the sections present, in fixed order: Summary, Key topics, Action items, Decisions, Open questions, Next steps", () => {
+    test("renders only the sections present, in fixed order: Action items, Decisions made, Open questions, Next steps, Key Takeaways, Topics", () => {
         const md = renderSummaryMarkdown({
-            summary: "We discussed the roadmap.",
-            topics: [{ heading: "Roadmap", points: ["Ship Phase 4", "Plan Phase 5"] }],
-            actionItems: [{ task: "Write tests", owner: "Kane", dueDate: "2026-08-27" }],
-            decisions: ["Go with local LLM enrichment"],
-            openQuestions: ["Which model to recommend by default?"],
-            nextSteps: ["Start Phase 5"],
+            actionItems: [{ task: "Write tests", timestamp: "12:34" }],
+            decisions: [{ text: "Go with local LLM enrichment", timestamp: "5:00" }],
+            openQuestions: [{ text: "Which model to recommend by default?", timestamp: "8:15" }],
+            nextSteps: [{ text: "Start Phase 5", timestamp: "40:00" }],
+            keyTakeaways: [{ lead: "Ship it", detail: "The team agreed to ship by Friday." }],
+            topics: [{ heading: "Roadmap", points: [{ text: "Ship Phase 4", timestamp: "1:00" }, { text: "Plan Phase 5" }] }],
         })
 
-        const summaryIdx = md.indexOf("## Summary")
-        const topicsIdx = md.indexOf("## Key topics")
         const actionItemsIdx = md.indexOf("## Action items")
-        const decisionsIdx = md.indexOf("## Decisions")
+        const decisionsIdx = md.indexOf("## Decisions made")
         const openQuestionsIdx = md.indexOf("## Open questions")
         const nextStepsIdx = md.indexOf("## Next steps")
+        const keyTakeawaysIdx = md.indexOf("## Key Takeaways")
+        const topicsIdx = md.indexOf("## Topics")
 
-        assert.ok(summaryIdx !== -1)
-        assert.ok(topicsIdx > summaryIdx)
-        assert.ok(actionItemsIdx > topicsIdx)
+        assert.ok(actionItemsIdx !== -1)
         assert.ok(decisionsIdx > actionItemsIdx)
         assert.ok(openQuestionsIdx > decisionsIdx)
         assert.ok(nextStepsIdx > openQuestionsIdx)
+        assert.ok(keyTakeawaysIdx > nextStepsIdx)
+        assert.ok(topicsIdx > keyTakeawaysIdx)
 
+        assert.ok(md.includes("- [ ] Write tests [12:34]"))
+        assert.ok(md.includes("- Go with local LLM enrichment [5:00]"))
+        assert.ok(md.includes("- Which model to recommend by default? [8:15]"))
+        assert.ok(md.includes("- Start Phase 5 [40:00]"))
+        assert.ok(md.includes("- **Ship it:** The team agreed to ship by Friday."))
         assert.ok(md.includes("### Roadmap"))
-        assert.ok(md.includes("- Ship Phase 4"))
-        assert.ok(md.includes("- [ ] Write tests (Owner: Kane, Due: 2026-08-27)"))
-        assert.ok(md.includes("- Go with local LLM enrichment"))
-        assert.ok(md.includes("- Which model to recommend by default?"))
-        assert.ok(md.includes("- Start Phase 5"))
-    })
-
-    test("a response with only `summary` still produces a valid, shorter fragment with no other sections", () => {
-        const md = renderSummaryMarkdown({ summary: "Just a quick chat." })
-        assert.equal(md, "## Summary\n\nJust a quick chat.")
-        assert.ok(!md.includes("## Key topics"))
-        assert.ok(!md.includes("## Action items"))
-        assert.ok(!md.includes("## Decisions"))
+        assert.ok(md.includes("- Ship Phase 4 [1:00]"))
+        assert.ok(md.includes("- Plan Phase 5"))
+        assert.ok(!md.includes("## Summary"))
     })
 
     test("returns empty string when every field is empty/absent", () => {
         assert.equal(renderSummaryMarkdown({}), "")
-        assert.equal(renderSummaryMarkdown({ summary: "", topics: [], actionItems: [], decisions: [], openQuestions: [], nextSteps: [] }), "")
+        assert.equal(renderSummaryMarkdown({
+            actionItems: [],
+            decisions: [],
+            openQuestions: [],
+            nextSteps: [],
+            keyTakeaways: [],
+            topics: [],
+        }), "")
     })
 
     test("returns empty string for null/undefined/non-object input, never throws", () => {
@@ -154,70 +156,171 @@ describe("renderSummaryMarkdown", () => {
         assert.equal(renderSummaryMarkdown(42), "")
     })
 
-    test("drops a topic missing a heading", () => {
-        const md = renderSummaryMarkdown({ topics: [{ points: ["orphan point"] }] })
-        assert.equal(md, "")
+    test("only one section populated renders just that section, nothing else", () => {
+        const md = renderSummaryMarkdown({ decisions: [{ text: "Just this one decision" }] })
+        assert.equal(md, "## Decisions made\n\n- Just this one decision")
+        assert.ok(!md.includes("## Action items"))
+        assert.ok(!md.includes("## Open questions"))
+        assert.ok(!md.includes("## Next steps"))
+        assert.ok(!md.includes("## Key Takeaways"))
+        assert.ok(!md.includes("## Topics"))
     })
 
-    test("drops a topic with empty/missing points", () => {
-        const md1 = renderSummaryMarkdown({ topics: [{ heading: "Empty topic", points: [] }] })
-        assert.equal(md1, "")
-        const md2 = renderSummaryMarkdown({ topics: [{ heading: "No points field" }] })
-        assert.equal(md2, "")
-    })
-
-    test("drops individual malformed topics but keeps valid ones alongside them", () => {
-        const md = renderSummaryMarkdown({
-            topics: [
-                { heading: "Valid", points: ["a point"] },
-                { points: ["missing heading"] },
-                { heading: "Also empty", points: [] },
-                "not even an object",
-                null,
-            ],
+    describe("action items", () => {
+        test("renders a valid timestamp as a trailing bracket", () => {
+            const md = renderSummaryMarkdown({ actionItems: [{ task: "Write tests", timestamp: "4:32" }] })
+            assert.equal(md, "## Action items\n\n- [ ] Write tests [4:32]")
         })
-        assert.ok(md.includes("### Valid"))
-        assert.ok(!md.includes("missing heading"))
-        assert.ok(!md.includes("Also empty"))
-    })
 
-    test("action items render owner/dueDate only when present", () => {
-        const md = renderSummaryMarkdown({
-            actionItems: [
-                { task: "No metadata" },
-                { task: "Owner only", owner: "Alice" },
-                { task: "Due only", dueDate: "Monday" },
-                { task: "Both", owner: "Bob", dueDate: "Tuesday" },
-            ],
+        test("renders with no bracket at all when timestamp is missing", () => {
+            const md = renderSummaryMarkdown({ actionItems: [{ task: "Write tests" }] })
+            assert.equal(md, "## Action items\n\n- [ ] Write tests")
         })
-        assert.ok(md.includes("- [ ] No metadata"))
-        assert.ok(md.includes("- [ ] Owner only (Owner: Alice)"))
-        assert.ok(md.includes("- [ ] Due only (Due: Monday)"))
-        assert.ok(md.includes("- [ ] Both (Owner: Bob, Due: Tuesday)"))
+
+        test("drops the bracket but keeps the text when timestamp is invalid", () => {
+            const md = renderSummaryMarkdown({ actionItems: [{ task: "Write tests", timestamp: "unknown" }] })
+            assert.equal(md, "## Action items\n\n- [ ] Write tests")
+        })
+
+        test("never renders an owner/due-date suffix even if the model hallucinates those keys", () => {
+            const md = renderSummaryMarkdown({ actionItems: [{ task: "Write tests", owner: "Alice", dueDate: "Monday" }] })
+            assert.equal(md, "## Action items\n\n- [ ] Write tests")
+            assert.ok(!md.includes("Owner"))
+            assert.ok(!md.includes("Due"))
+        })
+
+        test("items missing a task are dropped", () => {
+            const md = renderSummaryMarkdown({ actionItems: [{ timestamp: "1:00" }, { task: "" }] })
+            assert.equal(md, "")
+        })
     })
 
-    test("action items missing a task are dropped", () => {
-        const md = renderSummaryMarkdown({ actionItems: [{ owner: "Alice" }, { task: "" }] })
-        assert.equal(md, "")
+    describe("decisions / open questions / next steps (shared timestamped-bullet shape)", () => {
+        for (const [field, heading] of [
+            ["decisions", "## Decisions made"],
+            ["openQuestions", "## Open questions"],
+            ["nextSteps", "## Next steps"],
+        ]) {
+            test(`${field}: valid timestamp renders a trailing bracket`, () => {
+                const md = renderSummaryMarkdown({ [field]: [{ text: "Some text", timestamp: "2:05" }] })
+                assert.equal(md, `${heading}\n\n- Some text [2:05]`)
+            })
+
+            test(`${field}: missing timestamp renders with no bracket`, () => {
+                const md = renderSummaryMarkdown({ [field]: [{ text: "Some text" }] })
+                assert.equal(md, `${heading}\n\n- Some text`)
+            })
+
+            test(`${field}: invalid timestamp drops the bracket but keeps the text`, () => {
+                const md = renderSummaryMarkdown({ [field]: [{ text: "Some text", timestamp: "12:65" }] })
+                assert.equal(md, `${heading}\n\n- Some text`)
+            })
+
+            test(`${field}: items missing text are dropped`, () => {
+                const md = renderSummaryMarkdown({ [field]: [{ timestamp: "1:00" }, { text: "" }, "not an object", null] })
+                assert.equal(md, "")
+            })
+        }
+    })
+
+    describe("Key Takeaways", () => {
+        test("renders a correctly-formed bold lead-in", () => {
+            const md = renderSummaryMarkdown({ keyTakeaways: [{ lead: "Ship it", detail: "The team agreed to ship by Friday." }] })
+            assert.equal(md, "## Key Takeaways\n\n- **Ship it:** The team agreed to ship by Friday.")
+            assert.ok(md.includes("- **Ship it:**"), "opening ** must be present, not dropped/broken")
+        })
+
+        test("trims stray trailing punctuation off lead to avoid a doubled colon", () => {
+            const md = renderSummaryMarkdown({ keyTakeaways: [{ lead: "Ship it:", detail: "The team agreed." }] })
+            assert.equal(md, "## Key Takeaways\n\n- **Ship it:** The team agreed.")
+        })
+
+        test("never renders a timestamp suffix even if the model supplies one", () => {
+            const md = renderSummaryMarkdown({ keyTakeaways: [{ lead: "Ship it", detail: "By Friday.", timestamp: "5:00" }] })
+            assert.equal(md, "## Key Takeaways\n\n- **Ship it:** By Friday.")
+        })
+
+        test("drops an item missing lead", () => {
+            const md = renderSummaryMarkdown({ keyTakeaways: [{ detail: "Only detail, no lead." }] })
+            assert.equal(md, "")
+        })
+
+        test("drops an item missing detail", () => {
+            const md = renderSummaryMarkdown({ keyTakeaways: [{ lead: "Only lead, no detail" }] })
+            assert.equal(md, "")
+        })
+
+        test("keeps valid items alongside dropped malformed ones", () => {
+            const md = renderSummaryMarkdown({
+                keyTakeaways: [
+                    { lead: "Valid", detail: "This one renders." },
+                    { lead: "No detail" },
+                    { detail: "No lead" },
+                    null,
+                    "not an object",
+                ],
+            })
+            assert.equal(md, "## Key Takeaways\n\n- **Valid:** This one renders.")
+        })
+    })
+
+    describe("Topics", () => {
+        test("drops a topic missing a heading", () => {
+            const md = renderSummaryMarkdown({ topics: [{ points: [{ text: "orphan point" }] }] })
+            assert.equal(md, "")
+        })
+
+        test("drops a topic with empty/missing points", () => {
+            const md1 = renderSummaryMarkdown({ topics: [{ heading: "Empty topic", points: [] }] })
+            assert.equal(md1, "")
+            const md2 = renderSummaryMarkdown({ topics: [{ heading: "No points field" }] })
+            assert.equal(md2, "")
+        })
+
+        test("points render with timestamp brackets, dropped/valid/invalid handled the same as other sections", () => {
+            const md = renderSummaryMarkdown({
+                topics: [{
+                    heading: "Roadmap",
+                    points: [
+                        { text: "With timestamp", timestamp: "3:00" },
+                        { text: "No timestamp" },
+                        { text: "Bad timestamp", timestamp: "nope" },
+                        { timestamp: "1:00" },
+                    ],
+                }],
+            })
+            assert.ok(md.includes("- With timestamp [3:00]"))
+            assert.ok(md.includes("- No timestamp"))
+            assert.ok(md.includes("- Bad timestamp"))
+            assert.ok(!md.includes("- Bad timestamp [nope]"))
+        })
+
+        test("drops individual malformed topics but keeps valid ones alongside them", () => {
+            const md = renderSummaryMarkdown({
+                topics: [
+                    { heading: "Valid", points: [{ text: "a point" }] },
+                    { points: [{ text: "missing heading" }] },
+                    { heading: "Also empty", points: [] },
+                    "not even an object",
+                    null,
+                ],
+            })
+            assert.ok(md.includes("### Valid"))
+            assert.ok(!md.includes("missing heading"))
+            assert.ok(!md.includes("Also empty"))
+        })
     })
 
     test("malformed non-array fields don't crash the renderer and are treated as empty", () => {
         const md = renderSummaryMarkdown({
-            summary: "Still works.",
-            topics: "not an array",
             actionItems: { task: "wrong shape entirely" },
             decisions: 42,
             openQuestions: null,
             nextSteps: undefined,
+            keyTakeaways: "not an array",
+            topics: "not an array",
         })
-        assert.equal(md, "## Summary\n\nStill works.")
-    })
-
-    test("non-string entries inside decisions/openQuestions/nextSteps arrays are dropped, not crashed on", () => {
-        const md = renderSummaryMarkdown({
-            decisions: ["valid decision", 42, null, { not: "a string" }, ""],
-        })
-        assert.equal(md, "## Decisions\n\n- valid decision")
+        assert.equal(md, "")
     })
 })
 

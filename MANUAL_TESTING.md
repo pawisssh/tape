@@ -214,9 +214,17 @@ from before this round of changes (Phase 4 added new files/settings).
    running and warmed up (send it one throwaway request first if it's a cold start, to
    keep the real test within the timeout).
 10. Join a real Google Meet call, enable captions, have an actual back-and-forth
-    conversation for a few minutes (so the model has real content to summarize —
-    include at least one clearly stated action item with a named owner and a date, one
-    thing that is NOT assigned to anyone, and one open question left unresolved).
+    conversation for a few minutes (so the model has real content to summarize).
+    Include, deliberately:
+    - At least one clear action item and one decision, stated early — within the first
+      30-60 seconds of the call — so you can check its timestamp citation renders as
+      `[0:00]`-ish rather than being dropped.
+    - One open question left unresolved.
+    - One item that is vague/paraphrased/hard to pin to a single moment (e.g. a point
+      made gradually over a stretch of back-and-forth, not a single clean statement) —
+      so you can check it renders with **no bracket** rather than a guessed timestamp.
+    - Note down (or remember) roughly when things were said, so you can spot-check
+      timestamps afterward.
 11. End the call.
 12. On the meetings page, confirm the **"Summary"** column for this meeting now shows a
     **"View summary"** disclosure once generated — click it to expand and read the
@@ -224,15 +232,25 @@ from before this round of changes (Phase 4 added new files/settings).
 13. Open the actual note that landed in your Obsidian vault (same vault/folder/filename
     behavior as Phase 3) and confirm:
     - Only the sections the model actually returned are present — if it returned no
-      `topics`, there is no "Key topics" heading at all (not an empty one); same for
-      any other empty/omitted field.
-    - Section order (when present) is: Summary, Key topics, Action items, Decisions,
-      Open questions, Next steps — appearing after the frontmatter/title and before
-      `## Transcript`.
-    - The action item you clearly assigned to a named owner with a date shows that
-      owner/date correctly.
-    - The action item you deliberately left unassigned does **not** have a fabricated
-      owner or due date invented for it.
+      `topics`, there is no "Topics" heading at all (not an empty one); same for any
+      other empty/omitted field. There is **no `## Summary` heading anywhere** — it has
+      been replaced by `## Key Takeaways`.
+    - Section order (when present) is: Action items, Decisions made, Open questions,
+      Next steps, Key Takeaways, Topics — appearing after the frontmatter/title and
+      before `## Transcript`.
+    - Timestamp citations (the `[M:SS]`/`[H:MM:SS]` suffix on action items, decisions,
+      open questions, next steps, and topic points) are plausible against your own
+      memory of when things were said — spot-check 2-3 against the notes/memory from
+      step 10.
+    - The item you deliberately stated near the start of the call renders a
+      `[0:00]`-ish timestamp rather than being dropped entirely.
+    - The item you deliberately made vague/unattributable renders with **no bracket**
+      at all, rather than a guessed/fabricated timestamp.
+    - `## Key Takeaways` bullets show correctly-formed `**bold**` lead-ins (e.g.
+      `- **Lead:** Detail.`) — not a missing or broken opening `**`.
+    - Action items **never** show an owner or due-date suffix (that metadata was
+      removed from the schema entirely) — just the task text and an optional
+      `[M:SS]` timestamp.
     - The raw `## Transcript` section (and `## Chat messages`, if you used chat) is
       still present and complete, unaffected by the summary being added above it.
 
@@ -251,8 +269,10 @@ from before this round of changes (Phase 4 added new files/settings).
 17. Confirm **no error dialog or broken UI state blocks the flow** — at most the status
     line mentions the local LLM being unavailable, and the handoff still proceeds.
 18. Confirm the note still lands in Obsidian exactly as in Phase 3 (plain transcript,
-    correct frontmatter/filename), with **no "Summary" sections at all** — i.e. this
-    behaves identically to Phase 3 with the LLM feature off.
+    correct frontmatter/filename), with **none** of the LLM-generated sections present
+    at all — no "Action items", "Decisions made", "Open questions", "Next steps", "Key
+    Takeaways", or "Topics" headings — i.e. this behaves identically to Phase 3 with the
+    LLM feature off.
 19. Confirm the meetings page's **"Summary"** column for this second meeting shows "—"
     (no cached summary), not a stuck/broken state.
 20. Restore your endpoint/timeout settings back to their working values when done.
@@ -262,7 +282,7 @@ from before this round of changes (Phase 4 added new files/settings).
 | Step | Date | Pass/Fail | Notes |
 |---|---|---|---|
 | A (enable + permission grant) | 2026-08-26 | Pass | |
-| B (end-to-end note with real server) | 2026-08-26 | Pass | |
+| B (end-to-end note with real server) | 2026-08-26 | Pass | Verified against the pre-redesign schema (Summary/Key topics/owner-dueDate action items). Needs re-verification against the new timestamped-sections schema — see updated Step B checklist above. |
 | C (graceful fallback, server down/unreachable) | 2026-08-26 | Pass | |
 
 ---

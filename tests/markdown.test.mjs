@@ -10,6 +10,7 @@ import {
     renderChatSection,
     toYamlString,
     getParticipants,
+    formatElapsedTime,
     DEFAULT_FILENAME_TEMPLATE,
 } from "../extension/obsidian/markdown.js"
 
@@ -81,6 +82,42 @@ describe("toYamlString / frontmatter YAML-injection safety", () => {
             assert.ok(fm.includes(key), `frontmatter missing ${key}`)
         }
         assert.ok(fm.includes("45m"), "duration should be computed as 45m")
+    })
+})
+
+describe("formatElapsedTime", () => {
+    test("same instant elapsed is 0:00", () => {
+        assert.equal(formatElapsedTime("2026-08-26T10:00:00.000Z", "2026-08-26T10:00:00.000Z"), "0:00")
+    })
+
+    test("+50s elapsed", () => {
+        assert.equal(formatElapsedTime("2026-08-26T10:00:00.000Z", "2026-08-26T10:00:50.000Z"), "0:50")
+    })
+
+    test("+4m32s elapsed", () => {
+        assert.equal(formatElapsedTime("2026-08-26T10:00:00.000Z", "2026-08-26T10:04:32.000Z"), "4:32")
+    })
+
+    test("+41m12s elapsed", () => {
+        assert.equal(formatElapsedTime("2026-08-26T10:00:00.000Z", "2026-08-26T10:41:12.000Z"), "41:12")
+    })
+
+    test("+1h23m45s elapsed switches to H:MM:SS", () => {
+        assert.equal(formatElapsedTime("2026-08-26T10:00:00.000Z", "2026-08-26T11:23:45.000Z"), "1:23:45")
+    })
+
+    test("exactly 3600s elapsed is the H:MM:SS boundary", () => {
+        assert.equal(formatElapsedTime("2026-08-26T10:00:00.000Z", "2026-08-26T11:00:00.000Z"), "1:00:00")
+    })
+
+    test("negative elapsed (event before start) clamps to 0:00", () => {
+        assert.equal(formatElapsedTime("2026-08-26T10:00:00.000Z", "2026-08-26T09:59:00.000Z"), "0:00")
+    })
+
+    test("unparseable input returns null, not a string sentinel", () => {
+        assert.equal(formatElapsedTime("not a date", "2026-08-26T10:00:00.000Z"), null)
+        assert.equal(formatElapsedTime("2026-08-26T10:00:00.000Z", "not a date"), null)
+        assert.equal(formatElapsedTime("not a date", "not a date either"), null)
     })
 })
 

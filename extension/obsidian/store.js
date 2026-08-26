@@ -8,6 +8,7 @@
 // (tests/store.test.mjs) install a minimal in-memory fake of chrome.storage first.
 
 import { DEFAULT_FILENAME_TEMPLATE } from "./markdown.js"
+import { DEFAULT_LLM_ENDPOINT, DEFAULT_LLM_MODEL, DEFAULT_LLM_TIMEOUT_MS } from "./llm.js"
 
 const CLIPBOARD_LOCK_KEY = "obsidianClipboardLock"
 
@@ -90,6 +91,10 @@ export function getObsidianSettings() {
             "obsidianVaultName",
             "obsidianFolder",
             "obsidianFileNameTemplate",
+            "obsidianUseLlm",
+            "obsidianLlmEndpoint",
+            "obsidianLlmModel",
+            "obsidianLlmTimeoutMs",
         ], function (resultSyncUntyped) {
             const resultSync = /** @type {ResultSync} */ (resultSyncUntyped)
             resolve({
@@ -97,6 +102,10 @@ export function getObsidianSettings() {
                 obsidianVaultName: resultSync.obsidianVaultName || "",
                 obsidianFolder: resultSync.obsidianFolder || "",
                 obsidianFileNameTemplate: resultSync.obsidianFileNameTemplate || DEFAULT_FILENAME_TEMPLATE,
+                obsidianUseLlm: resultSync.obsidianUseLlm === true,
+                obsidianLlmEndpoint: resultSync.obsidianLlmEndpoint || DEFAULT_LLM_ENDPOINT,
+                obsidianLlmModel: resultSync.obsidianLlmModel || DEFAULT_LLM_MODEL,
+                obsidianLlmTimeoutMs: resultSync.obsidianLlmTimeoutMs || DEFAULT_LLM_TIMEOUT_MS,
             })
         })
     })

@@ -17,11 +17,28 @@
  */
 
 /**
+ * @typedef {boolean} ObsidianUseLlm Whether to enrich the note with a local LLM-generated summary before handing off to Obsidian (Phase 4).
+ */
+/**
+ * @typedef {string} ObsidianLlmEndpoint OpenAI-chat-completions-compatible endpoint of a locally-running LLM server (e.g. LM Studio or Ollama).
+ */
+/**
+ * @typedef {string} ObsidianLlmModel Model name/identifier as known to the local LLM server. No hardcoded default tied to one specific model — the user must set this to whatever they've pulled locally.
+ */
+/**
+ * @typedef {number} ObsidianLlmTimeoutMs Milliseconds to wait for the local LLM server to respond before aborting and falling back to the plain transcript note.
+ */
+
+/**
  * @typedef {Object} ObsidianSettings
  * @property {AutoSaveToObsidianAfterMeeting} autoSaveToObsidianAfterMeeting
  * @property {ObsidianVaultName} obsidianVaultName
  * @property {ObsidianFolder} obsidianFolder
  * @property {ObsidianFileNameTemplate} obsidianFileNameTemplate
+ * @property {ObsidianUseLlm} obsidianUseLlm added in Phase 4
+ * @property {ObsidianLlmEndpoint} obsidianLlmEndpoint added in Phase 4
+ * @property {ObsidianLlmModel} obsidianLlmModel added in Phase 4
+ * @property {ObsidianLlmTimeoutMs} obsidianLlmTimeoutMs added in Phase 4
  */
 
 /**

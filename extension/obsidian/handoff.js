@@ -6,7 +6,7 @@
 // Orchestrates the Obsidian handoff flow described in PLAN.md §5:
 //   1. load meeting + settings
 //   2. buildMarkdown(meeting)
-//   3. (Phase 4, not implemented yet) optional LLM enrichment
+//   3. optional LLM enrichment (Phase 4) — see enrichWithLlm() call below
 //   4. decide inline content= vs. clipboard delivery
 //   5. navigate to obsidian://new?vault=...&file=...&content=...
 //   6. mark meeting.obsidianSaveStatus = "handed_off" (optimistic, no delivery confirmation)
@@ -20,6 +20,7 @@
 
 import { buildMarkdown, buildFilename } from "./markdown.js"
 import { buildObsidianUri, joinObsidianPath } from "./uri.js"
+import { enrichWithLlm } from "./llm.js"
 import {
     getMeetingById,
     updateMeetingById,
@@ -63,6 +64,24 @@ async function markStatus(meetingId, status) {
     }
 }
 
+/**
+ * Cache the LLM enrichment result on the meeting record so it can be shown read-only on
+ * the history page (meetings.js), independent of whether the Obsidian handoff itself
+ * later succeeds. Best-effort — a failure here must never interrupt the handoff flow.
+ * @param {string} meetingId
+ * @param {{title?: string, summaryMarkdown: string}} llmResult
+ */
+async function markSummaryCache(meetingId, llmResult) {
+    try {
+        await updateMeetingById(meetingId, () => ({
+            llmSummaryMarkdown: llmResult.summaryMarkdown,
+            ...(llmResult.title ? { llmSummaryTitle: llmResult.title } : {}),
+        }))
+    } catch (err) {
+        console.error("[obsidian-handoff] failed to cache LLM summary (non-fatal)", err)
+    }
+}
+
 async function run() {
     const params = new URLSearchParams(window.location.search)
     const meetingId = params.get("meetingId")
@@ -91,8 +110,35 @@ async function run() {
         return
     }
 
+    // Step 3 (Phase 4): optional local LLM enrichment. enrichWithLlm() is documented to
+    // NEVER throw and to resolve to `null` on any failure whatsoever (server
+    // unreachable, timeout, malformed JSON, etc.) — null just means "skip enrichment".
+    // The try/catch here is deliberate defense-in-depth on top of that guarantee (see
+    // PLAN.md §8: this is the single property most worth scrutinizing), so that even an
+    // unforeseen bug in llm.js can never take down the plain-transcript export path.
+    /** @type {{title?: string, summaryMarkdown: string} | null} */
+    let llmResult = null
+    if (settings.obsidianUseLlm) {
+        setStatus("Summarizing with local LLM…")
+        try {
+            llmResult = await enrichWithLlm(meeting, settings)
+        } catch (err) {
+            console.error("[obsidian-handoff] LLM enrichment threw unexpectedly (falling back to plain note)", err)
+            llmResult = null
+        }
+        if (llmResult) {
+            setStatus("Summary ready. Building note…")
+            // Cache the summary on the meeting record so it can be shown read-only on
+            // the history page even before/without the Obsidian URI navigation below
+            // (e.g. useful if the user later checks meetings.html for this meeting).
+            await markSummaryCache(meetingId, llmResult)
+        } else {
+            setStatus("Local LLM unavailable or returned nothing usable — continuing with the plain transcript…")
+        }
+    }
+
     setStatus("Building note…")
-    const content = buildMarkdown(meeting)
+    const content = buildMarkdown(meeting, llmResult ? { overrideTitle: llmResult.title, summaryMarkdown: llmResult.summaryMarkdown } : undefined)
     const filename = buildFilename(settings.obsidianFileNameTemplate, meeting)
     const filePath = joinObsidianPath(settings.obsidianFolder, filename)
 

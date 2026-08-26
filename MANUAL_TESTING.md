@@ -156,10 +156,101 @@ unmodified from upstream behavior.
 
 ---
 
-## Phase 4 — Local LLM summary enrichment (not yet implemented)
+## Phase 4 — Local LLM summary enrichment manual verification
 
-Not started. This section will be filled in once Phase 4 is implemented and handed
-back for manual verification.
+Requires everything from Phase 3 already configured and working (vault name, folder,
+filename template), plus a local LLM server reachable from this machine: either
+[LM Studio](https://lmstudio.ai/) with its local server started (default
+`http://localhost:1234/v1/chat/completions`) or [Ollama](https://ollama.com/) serving
+its OpenAI-compatible endpoint (typically `http://localhost:11434/v1/chat/completions`).
+Pull/load at least one instruct-tuned model in whichever server you use before starting.
+
+**Reload the unpacked extension in `chrome://extensions` first** if you had it loaded
+from before this round of changes (Phase 4 added new files/settings).
+
+### Step A: configure and enable the LLM setting (permission-grant gesture)
+
+1. Open the meetings page (`meetings.html`) and scroll to **"Local LLM summary
+   enrichment"** (below the Obsidian section).
+2. In **Endpoint URL**, enter your server's chat-completions endpoint — the LM Studio
+   default is pre-filled as a placeholder; for Ollama use
+   `http://localhost:11434/v1/chat/completions` instead.
+3. In **Model name**, enter the exact model identifier as known to your local server
+   (e.g. what `ollama list` shows, or the model dropdown in LM Studio's server tab).
+4. Leave **Timeout** at the default (90000 ms) or lower it for testing.
+5. Click **Save** — confirm an alert says "LLM settings saved!".
+6. Click the **"Enable local LLM summary enrichment"** checkbox.
+   - Confirm this is the action that triggers Chrome's permission prompt (an
+     "<extension> wants to access data on `<host>`" style prompt, or similar) — this
+     must happen directly from clicking the checkbox, not from unrelated navigation.
+   - Click **Allow**. Confirm the checkbox stays checked afterward.
+7. Reload `meetings.html` (or revisit it later) and confirm the checkbox still shows
+   checked — the granted permission plus `obsidianUseLlm: true` should both persist.
+8. As a negative check: open `chrome://extensions` → TranscripTonic → "Details", find
+   the granted host permission for your endpoint's host, and remove it. Reload
+   `meetings.html` — confirm the checkbox now shows **unchecked** (the UI must never
+   claim the feature is "on" without the matching permission actually being granted).
+   Re-grant it via the checkbox again before continuing.
+
+### Step B: end-to-end note with the local server running
+
+9. Make sure **"Automatically save transcript to Obsidian, after each meeting"** is on
+   (from Phase 3) and the LLM checkbox from Step A is on, with your local LLM server
+   running and warmed up (send it one throwaway request first if it's a cold start, to
+   keep the real test within the timeout).
+10. Join a real Google Meet call, enable captions, have an actual back-and-forth
+    conversation for a few minutes (so the model has real content to summarize —
+    include at least one clearly stated action item with a named owner and a date, one
+    thing that is NOT assigned to anyone, and one open question left unresolved).
+11. End the call.
+12. On the meetings page, confirm the **"Summary"** column for this meeting now shows a
+    **"View summary"** disclosure once generated — click it to expand and read the
+    cached summary text.
+13. Open the actual note that landed in your Obsidian vault (same vault/folder/filename
+    behavior as Phase 3) and confirm:
+    - Only the sections the model actually returned are present — if it returned no
+      `topics`, there is no "Key topics" heading at all (not an empty one); same for
+      any other empty/omitted field.
+    - Section order (when present) is: Summary, Key topics, Action items, Decisions,
+      Open questions, Next steps — appearing after the frontmatter/title and before
+      `## Transcript`.
+    - The action item you clearly assigned to a named owner with a date shows that
+      owner/date correctly.
+    - The action item you deliberately left unassigned does **not** have a fabricated
+      owner or due date invented for it.
+    - The raw `## Transcript` section (and `## Chat messages`, if you used chat) is
+      still present and complete, unaffected by the summary being added above it.
+
+### Step C: graceful fallback when the local server is unreachable
+
+14. Stop your local LLM server (quit LM Studio's server / `ollama stop` or kill the
+    Ollama server process), OR leave it running but change **Endpoint URL** to an
+    invalid/unreachable address (e.g. `http://localhost:1/v1/chat/completions`), OR set
+    **Timeout** to a very low value (e.g. `50`) so a real server can't respond in time.
+    Save the settings.
+15. Join another short real Meet call, enable captions, talk briefly, end the call.
+16. Confirm the overall export flow does **not hang** — the handoff tab's status
+    updates past "Summarizing with local LLM…" within roughly your configured timeout
+    (or immediately, if the endpoint is simply unreachable) and reaches "Opening
+    Obsidian…" / "Done" normally.
+17. Confirm **no error dialog or broken UI state blocks the flow** — at most the status
+    line mentions the local LLM being unavailable, and the handoff still proceeds.
+18. Confirm the note still lands in Obsidian exactly as in Phase 3 (plain transcript,
+    correct frontmatter/filename), with **no "Summary" sections at all** — i.e. this
+    behaves identically to Phase 3 with the LLM feature off.
+19. Confirm the meetings page's **"Summary"** column for this second meeting shows "—"
+    (no cached summary), not a stuck/broken state.
+20. Restore your endpoint/timeout settings back to their working values when done.
+
+### Record results here
+
+| Step | Date | Pass/Fail | Notes |
+|---|---|---|---|
+| A (enable + permission grant) | | | |
+| B (end-to-end note with real server) | | | |
+| C (graceful fallback, server down/unreachable) | | | |
+
+---
 
 ## Phase 5 — Full UI rewrite (not yet implemented)
 

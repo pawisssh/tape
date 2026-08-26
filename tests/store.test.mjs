@@ -124,6 +124,10 @@ describe("getObsidianSettings / setObsidianSettings", () => {
         assert.equal(settings.obsidianVaultName, "")
         assert.equal(settings.obsidianFolder, "")
         assert.equal(settings.obsidianFileNameTemplate, "{{date}} - {{title}}")
+        assert.equal(settings.obsidianUseLlm, false)
+        assert.equal(settings.obsidianLlmEndpoint, "http://localhost:1234/v1/chat/completions")
+        assert.equal(settings.obsidianLlmModel, "")
+        assert.equal(settings.obsidianLlmTimeoutMs, 90000)
     })
 
     test("round-trips saved settings", async () => {
@@ -132,12 +136,20 @@ describe("getObsidianSettings / setObsidianSettings", () => {
             obsidianVaultName: "My Vault",
             obsidianFolder: "Meetings",
             obsidianFileNameTemplate: "{{title}}",
+            obsidianUseLlm: true,
+            obsidianLlmEndpoint: "http://localhost:11434/v1/chat/completions",
+            obsidianLlmModel: "llama3.1",
+            obsidianLlmTimeoutMs: 30000,
         })
         const settings = await getObsidianSettings()
         assert.equal(settings.autoSaveToObsidianAfterMeeting, true)
         assert.equal(settings.obsidianVaultName, "My Vault")
         assert.equal(settings.obsidianFolder, "Meetings")
         assert.equal(settings.obsidianFileNameTemplate, "{{title}}")
+        assert.equal(settings.obsidianUseLlm, true)
+        assert.equal(settings.obsidianLlmEndpoint, "http://localhost:11434/v1/chat/completions")
+        assert.equal(settings.obsidianLlmModel, "llama3.1")
+        assert.equal(settings.obsidianLlmTimeoutMs, 30000)
     })
 })
 

@@ -98,6 +98,8 @@
  * @property {ChatMessage[] | []} chatMessages array containing chat messages from the meeting
  * @property {"new" | "failed" | "successful"} webhookPostStatus status of the webhook post request
  * @property {ObsidianSaveStatus} [obsidianSaveStatus] status of handoff to Obsidian (added in Phase 3, additive/optional — absent means Obsidian export was never attempted for this meeting)
+ * @property {string} [llmSummaryMarkdown] rendered LLM summary markdown fragment, cached from the most recent successful enrichment (added in Phase 4, additive/optional — absent means LLM enrichment was never attempted or never succeeded for this meeting)
+ * @property {string} [llmSummaryTitle] LLM-suggested title from the most recent successful enrichment (added in Phase 4, additive/optional)
  */
 
 /** @typedef {Object} StateTranscriptBlock
@@ -181,6 +183,10 @@
  * @property {ObsidianVaultName | undefined} obsidianVaultName added in Phase 3
  * @property {ObsidianFolder | undefined} obsidianFolder added in Phase 3
  * @property {ObsidianFileNameTemplate | undefined} obsidianFileNameTemplate added in Phase 3
+ * @property {ObsidianUseLlm | undefined} obsidianUseLlm added in Phase 4
+ * @property {ObsidianLlmEndpoint | undefined} obsidianLlmEndpoint added in Phase 4
+ * @property {ObsidianLlmModel | undefined} obsidianLlmModel added in Phase 4
+ * @property {ObsidianLlmTimeoutMs | undefined} obsidianLlmTimeoutMs added in Phase 4
 */
 
 

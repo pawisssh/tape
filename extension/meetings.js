@@ -8,6 +8,12 @@
 // upstream's existing vanilla-JS pages — no bundler in Phase 3).
 const DEFAULT_OBSIDIAN_FILENAME_TEMPLATE = "{{date}} - {{title}}"
 
+// Kept in sync with extension/obsidian/llm.js's DEFAULT_LLM_ENDPOINT/DEFAULT_LLM_MODEL/
+// DEFAULT_LLM_TIMEOUT_MS, for the same reason as DEFAULT_OBSIDIAN_FILENAME_TEMPLATE above.
+const DEFAULT_LLM_ENDPOINT = "http://localhost:1234/v1/chat/completions"
+const DEFAULT_LLM_MODEL = ""
+const DEFAULT_LLM_TIMEOUT_MS = 90000
+
 let isMeetingsTableExpanded = false
 
 document.addEventListener("DOMContentLoaded", function () {
@@ -27,6 +33,13 @@ document.addEventListener("DOMContentLoaded", function () {
     const obsidianFolderInput = document.querySelector("#obsidian-folder")
     const obsidianFileNameTemplateInput = document.querySelector("#obsidian-filename-template")
     const autoSaveObsidianCheckbox = document.querySelector("#auto-save-obsidian")
+
+    // LLM summary settings form elements (Phase 4)
+    const llmSettingsForm = document.querySelector("#llm-settings-form")
+    const llmEndpointInput = document.querySelector("#obsidian-llm-endpoint")
+    const llmModelInput = document.querySelector("#obsidian-llm-model")
+    const llmTimeoutInput = document.querySelector("#obsidian-llm-timeout")
+    const useLlmSummaryCheckbox = document.querySelector("#use-llm-summary")
 
     // The .txt download must stay an always-on fallback unless another exporter
     // (webhook or Obsidian) is active, so the user is never left with zero export
@@ -240,6 +253,98 @@ document.addEventListener("DOMContentLoaded", function () {
         })
     }
 
+    if (llmSettingsForm instanceof HTMLFormElement && llmEndpointInput instanceof HTMLInputElement && llmModelInput instanceof HTMLInputElement && llmTimeoutInput instanceof HTMLInputElement && useLlmSummaryCheckbox instanceof HTMLInputElement) {
+        // Load saved LLM settings
+        chrome.storage.sync.get([
+            "obsidianLlmEndpoint",
+            "obsidianLlmModel",
+            "obsidianLlmTimeoutMs",
+            "obsidianUseLlm",
+        ], function (resultSyncUntyped) {
+            const resultSync = /** @type {ResultSync} */ (resultSyncUntyped)
+
+            llmEndpointInput.value = resultSync.obsidianLlmEndpoint || DEFAULT_LLM_ENDPOINT
+            llmModelInput.value = resultSync.obsidianLlmModel || DEFAULT_LLM_MODEL
+            llmTimeoutInput.value = String(resultSync.obsidianLlmTimeoutMs || DEFAULT_LLM_TIMEOUT_MS)
+            // Only ever reflect a *granted* permission as "on" — obsidianUseLlm must
+            // never silently read as enabled without the matching host permission, so
+            // the extension stays fully functional (falls through to the null-fallback
+            // path) even if the permission was revoked out-of-band (e.g. via
+            // chrome://extensions) after being saved as true.
+            const wantsLlm = resultSync.obsidianUseLlm === true
+            if (wantsLlm) {
+                const originPattern = llmEndpointOriginPattern(llmEndpointInput.value)
+                if (originPattern) {
+                    chrome.permissions.contains({ origins: [originPattern] }, function (hasPermission) {
+                        useLlmSummaryCheckbox.checked = hasPermission === true
+                        if (!hasPermission) {
+                            // Permission was revoked since this was last saved as "on" —
+                            // reflect reality in storage too, so triggerObsidianHandoffIfConfigured's
+                            // read of obsidianUseLlm doesn't disagree with what the UI shows.
+                            chrome.storage.sync.set({ obsidianUseLlm: false }, function () { })
+                        }
+                    })
+                } else {
+                    useLlmSummaryCheckbox.checked = false
+                }
+            } else {
+                useLlmSummaryCheckbox.checked = false
+            }
+        })
+
+        // Save endpoint / model / timeout
+        llmSettingsForm.addEventListener("submit", function (e) {
+            e.preventDefault()
+            const timeoutMs = parseInt(llmTimeoutInput.value, 10)
+            chrome.storage.sync.set({
+                obsidianLlmEndpoint: llmEndpointInput.value.trim() || DEFAULT_LLM_ENDPOINT,
+                obsidianLlmModel: llmModelInput.value.trim(),
+                obsidianLlmTimeoutMs: Number.isFinite(timeoutMs) && timeoutMs > 0 ? timeoutMs : DEFAULT_LLM_TIMEOUT_MS,
+            }, function () {
+                alert("LLM settings saved!")
+            })
+        })
+
+        // The permission request MUST happen directly inside this checkbox's own
+        // click/change handler so it counts as a genuine user gesture — Chrome refuses
+        // chrome.permissions.request() calls made outside one (e.g. from a blur handler
+        // or an unrelated effect).
+        useLlmSummaryCheckbox.addEventListener("change", function () {
+            if (!useLlmSummaryCheckbox.checked) {
+                chrome.storage.sync.set({ obsidianUseLlm: false }, function () { })
+                return
+            }
+
+            const endpoint = llmEndpointInput.value.trim() || DEFAULT_LLM_ENDPOINT
+            const originPattern = llmEndpointOriginPattern(endpoint)
+            if (!originPattern) {
+                alert("Please enter a valid endpoint URL before enabling LLM summaries.")
+                useLlmSummaryCheckbox.checked = false
+                return
+            }
+
+            useLlmSummaryCheckbox.disabled = true
+            chrome.permissions.request({ origins: [originPattern] }).then((granted) => {
+                useLlmSummaryCheckbox.disabled = false
+                if (granted) {
+                    chrome.storage.sync.set({
+                        obsidianUseLlm: true,
+                        obsidianLlmEndpoint: endpoint,
+                    }, function () { })
+                } else {
+                    useLlmSummaryCheckbox.checked = false
+                    chrome.storage.sync.set({ obsidianUseLlm: false }, function () { })
+                }
+            }).catch((error) => {
+                useLlmSummaryCheckbox.disabled = false
+                useLlmSummaryCheckbox.checked = false
+                chrome.storage.sync.set({ obsidianUseLlm: false }, function () { })
+                console.error("LLM endpoint permission error:", error)
+                alert("Could not request permission for that endpoint. Enable LLM summaries again once fixed.")
+            })
+        })
+    }
+
     if (showAllButton instanceof HTMLButtonElement) {
         showAllButton.addEventListener("click", () => {
             const meetingsTableContainer = document.querySelector("#meetings-table-container")
@@ -280,6 +385,41 @@ function requestWebhookAndNotificationPermission(url) {
             reject(error)
         }
     })
+}
+
+// Derive the origin match pattern (for chrome.permissions.request/contains) from a
+// configured LLM endpoint URL. Kept in sync with extension/obsidian/llm.js's
+// endpointOriginPattern() for the same reason as the DEFAULT_LLM_* constants above —
+// this file is a plain <script>, not a module, so it can't import that function
+// directly. Chrome match patterns have no port component (any port on the host is
+// implicitly covered), matching the pattern already used for webhook URLs below.
+/**
+ * @param {string} endpoint
+ * @returns {string | null}
+ */
+function llmEndpointOriginPattern(endpoint) {
+    try {
+        const url = new URL(endpoint)
+        return `${url.protocol}//${url.hostname}/*`
+    } catch {
+        return null
+    }
+}
+
+// Minimal HTML-escaping for text (e.g. LLM-generated summaries) inserted via
+// innerHTML — this content did not originate from this extension's own code, so it
+// should never be interpreted as markup.
+/**
+ * @param {string} text
+ * @returns {string}
+ */
+function escapeHtml(text) {
+    return String(text)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;")
 }
 
 // Load and display recent transcripts
@@ -343,6 +483,14 @@ function loadMeetings() {
                                 }
                             }
                         )()}
+                    </td>
+                    <td>
+                        ${meeting.llmSummaryMarkdown ? `
+                            <details class="llm-summary-details">
+                                <summary>View summary</summary>
+                                <pre class="llm-summary-content">${escapeHtml(meeting.llmSummaryMarkdown)}</pre>
+                            </details>
+                        ` : `<span class="sub-text">—</span>`}
                     </td>
                     <td>
                         <div style="display: flex; gap: 1rem; justify-content: end">
@@ -511,7 +659,7 @@ function loadMeetings() {
                 }
             }
             else {
-                meetingsTable.innerHTML = `<tr><td colspan="6">Your next meeting will show up here</td></tr>`
+                meetingsTable.innerHTML = `<tr><td colspan="7">Your next meeting will show up here</td></tr>`
             }
         }
     })

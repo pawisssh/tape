@@ -1,4 +1,5 @@
 import { downloadTranscript, postTranscriptToWebhook } from './exporters.js'
+import { getObsidianSettings, updateMeetingById, getMeetingId } from '../obsidian/store.js'
 
 // Download transcripts, post webhook if URL is enabled and available
 // Fails if transcript is empty or webhook request fails or if no meetings in storage
@@ -36,12 +37,15 @@ export function processLastMeeting() {
                         Promise.all(promises)
                             .then(() => {
                                 resolve("Meeting processing and download/webhook posting complete")
-                                // Increment anonymous transcript generated count to a Google sheet
+
+                                // Fire-and-forget: hand off to Obsidian if auto-save is configured.
+                                // Must never block or fail the download/webhook exporters above —
+                                // this promise's resolve() has already been called by this point,
+                                // and any error here is only logged, never propagated to the caller.
                                 // @ts-ignore - Because this line exists in the resolved promise from pickupLastMeetingFromStorage, which clearly means that at least one meeting exists and resultLocal.meetings cannot be undefined.
-                                const meetingSoftware = resultLocal.meetings[lastIndex].meetingSoftware
-                                const isWebhookEnabled = resultSync.webhookUrl && resultSync.autoPostWebhookAfterMeeting ? true : false
-                                fetch(`https://script.google.com/macros/s/AKfycbxK3Xd3u7ArtSEEUmu4jJSuJiyOHr5BtRqRGbcAy8Yc3zlVBTUoJ4wr-fJtQtlqRLGspg/exec?version=${chrome.runtime.getManifest().version}&isWebhookEnabled=${isWebhookEnabled}&meetingSoftware=${meetingSoftware}`, {
-                                    mode: "no-cors"
+                                const lastMeeting = resultLocal.meetings[lastIndex]
+                                triggerObsidianHandoffIfConfigured(lastMeeting, true).catch((error) => {
+                                    console.error("Obsidian handoff trigger failed (non-fatal):", error)
                                 })
                             })
                             .catch(error => {
@@ -151,6 +155,40 @@ export function recoverLastMeeting() {
                 reject({ errorCode: "013", errorMessage: "No meetings found. May be attend one?" })
             }
         })
+    })
+}
+
+/**
+ * Opens the Obsidian handoff page (extension/obsidian/handoff.html) for a meeting.
+ * Fire-and-forget from the caller's perspective — this must never be awaited in a way
+ * that blocks or fails the existing download/webhook exporters, since the handoff page
+ * may perform a slow local LLM call (Phase 4) and Obsidian may not even be installed.
+ *
+ * When `auto` is true (called right after a meeting ends), the handoff only opens if
+ * `autoSaveToObsidianAfterMeeting` is on. When `auto` is false (a manual "Save to
+ * Obsidian" click from the history page), it opens whenever a vault name is configured,
+ * regardless of the auto-save toggle.
+ * @param {Meeting} meeting
+ * @param {boolean} auto
+ * @returns {Promise<{ opened: boolean, reason?: "obsidian_not_configured" | "auto_save_disabled" }>}
+ */
+export function triggerObsidianHandoffIfConfigured(meeting, auto) {
+    return getObsidianSettings().then((settings) => {
+        if (!settings.obsidianVaultName) {
+            return { opened: false, reason: /** @type {const} */ ("obsidian_not_configured") }
+        }
+        if (auto && !settings.autoSaveToObsidianAfterMeeting) {
+            return { opened: false, reason: /** @type {const} */ ("auto_save_disabled") }
+        }
+
+        const meetingId = getMeetingId(meeting)
+        return updateMeetingById(meetingId, () => ({ obsidianSaveStatus: "pending" }))
+            .then(() => {
+                chrome.tabs.create({
+                    url: chrome.runtime.getURL(`obsidian/handoff.html?meetingId=${encodeURIComponent(meetingId)}&auto=${auto}`)
+                })
+                return { opened: true }
+            })
     })
 }
 

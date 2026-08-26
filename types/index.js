@@ -97,6 +97,7 @@
  * @property {TranscriptBlock[] | []} transcript array containing transcript blocks from the meeting
  * @property {ChatMessage[] | []} chatMessages array containing chat messages from the meeting
  * @property {"new" | "failed" | "successful"} webhookPostStatus status of the webhook post request
+ * @property {ObsidianSaveStatus} [obsidianSaveStatus] status of handoff to Obsidian (added in Phase 3, additive/optional — absent means Obsidian export was never attempted for this meeting)
  */
 
 /** @typedef {Object} StateTranscriptBlock
@@ -128,10 +129,11 @@
  */
 /**
  * @typedef {Object} ExtensionMessage Message sent by the calling script
- * @property {"new_meeting_started" | "meeting_ended" | "download_transcript_at_index" | "post_webhook_at_index" | "recover_last_meeting" | "get_platform_enablement_status" | "get_platform_permission_status" | "enable_platform" | "disable_platform" | "open_popup" | "open_side_panel" | "broadcast_live_buffer"} type type of message
+ * @property {"new_meeting_started" | "meeting_ended" | "download_transcript_at_index" | "post_webhook_at_index" | "recover_last_meeting" | "get_platform_enablement_status" | "get_platform_permission_status" | "enable_platform" | "disable_platform" | "open_popup" | "open_side_panel" | "broadcast_live_buffer" | "save_meeting_to_obsidian"} type type of message
  * @property {number} [index] index of the meeting to process
  * @property {Platform | Platform[]} [platform] index of the meeting to process
  * @property {StateTranscriptBlock} [stateTranscriptBlock]
+ * @property {string} [meetingId] stable id (see obsidian/store.js getMeetingId) of the meeting to act on — used by "save_meeting_to_obsidian" (added in Phase 3)
 */
 
 /**
@@ -175,6 +177,10 @@
  * @property {WantGoogleMeet} wantGoogleMeet
  * @property {WantTeams} wantTeams
  * @property {WantZoom} wantZoom
+ * @property {AutoSaveToObsidianAfterMeeting | undefined} autoSaveToObsidianAfterMeeting added in Phase 3
+ * @property {ObsidianVaultName | undefined} obsidianVaultName added in Phase 3
+ * @property {ObsidianFolder | undefined} obsidianFolder added in Phase 3
+ * @property {ObsidianFileNameTemplate | undefined} obsidianFileNameTemplate added in Phase 3
 */
 
 
@@ -202,3 +208,5 @@
 // | **013** | "No meetings found. May be attend one?" |
 // | **014** | "Empty transcript and empty chatMessages" |
 // | **015** | "Invalid index" |
+// | **017** | "Meeting not found for given id" (added Phase 3, Obsidian handoff) |
+// | **018** | "Obsidian vault not configured" (added Phase 3, Obsidian handoff) |

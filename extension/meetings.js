@@ -1,6 +1,12 @@
 // @ts-check
 /// <reference path="../types/chrome.d.ts" />
 /// <reference path="../types/index.js" />
+/// <reference path="../types/obsidian.js" />
+
+// Kept in sync with extension/obsidian/markdown.js's DEFAULT_FILENAME_TEMPLATE. Not
+// imported directly because this file is a plain <script>, not a module (matching
+// upstream's existing vanilla-JS pages — no bundler in Phase 3).
+const DEFAULT_OBSIDIAN_FILENAME_TEMPLATE = "{{date}} - {{title}}"
 
 let isMeetingsTableExpanded = false
 
@@ -14,6 +20,33 @@ document.addEventListener("DOMContentLoaded", function () {
     const advancedWebhookBodyRadio = document.querySelector("#advanced-webhook-body")
     const recoverLastMeetingButton = document.querySelector("#recover-last-meeting")
     const showAllButton = document.querySelector("#show-all")
+
+    // Obsidian settings form elements
+    const obsidianSettingsForm = document.querySelector("#obsidian-settings-form")
+    const obsidianVaultNameInput = document.querySelector("#obsidian-vault-name")
+    const obsidianFolderInput = document.querySelector("#obsidian-folder")
+    const obsidianFileNameTemplateInput = document.querySelector("#obsidian-filename-template")
+    const autoSaveObsidianCheckbox = document.querySelector("#auto-save-obsidian")
+
+    // The .txt download must stay an always-on fallback unless another exporter
+    // (webhook or Obsidian) is active, so the user is never left with zero export
+    // paths. Hides/forces the "auto-download" checkbox on based on whether webhook
+    // auto-post or Obsidian auto-save is enabled.
+    function updateAutoDownloadCheckBox() {
+        if (autoDownloadCheckbox?.parentElement instanceof HTMLDivElement) {
+            const webhookOn = autoPostCheckbox instanceof HTMLInputElement && autoPostCheckbox.checked
+            const obsidianOn = autoSaveObsidianCheckbox instanceof HTMLInputElement && autoSaveObsidianCheckbox.checked
+            const anotherExporterActive = webhookOn || obsidianOn
+
+            autoDownloadCheckbox.parentElement.style.display = anotherExporterActive ? "flex" : "none"
+            if (!anotherExporterActive && autoDownloadCheckbox instanceof HTMLInputElement) {
+                autoDownloadCheckbox.checked = true
+                chrome.storage.sync.set({
+                    autoDownloadFileAfterMeeting: true,
+                }, function () { })
+            }
+        }
+    }
 
     // Initial load of transcripts
     loadMeetings()
@@ -149,18 +182,6 @@ document.addEventListener("DOMContentLoaded", function () {
             })
         }
 
-        function updateAutoDownloadCheckBox() {
-            if (autoDownloadCheckbox?.parentElement instanceof HTMLDivElement && autoPostCheckbox instanceof HTMLInputElement) {
-                autoDownloadCheckbox.parentElement.style.display = autoPostCheckbox.checked ? "flex" : "none"
-                if (!autoPostCheckbox.checked && autoDownloadCheckbox instanceof HTMLInputElement) {
-                    autoDownloadCheckbox.checked = true
-                    chrome.storage.sync.set({
-                        autoDownloadFileAfterMeeting: true,
-                    }, function () { })
-                }
-            }
-        }
-
         // Auto save webhook body type
         simpleWebhookBodyRadio.addEventListener("change", function () {
             // Save webhook URL and settings
@@ -171,6 +192,51 @@ document.addEventListener("DOMContentLoaded", function () {
         advancedWebhookBodyRadio.addEventListener("change", function () {
             // Save webhook URL and settings
             chrome.storage.sync.set({ webhookBodyType: advancedWebhookBodyRadio.checked ? "advanced" : "simple" }, function () { })
+        })
+    }
+
+    if (obsidianSettingsForm instanceof HTMLFormElement && obsidianVaultNameInput instanceof HTMLInputElement && obsidianFolderInput instanceof HTMLInputElement && obsidianFileNameTemplateInput instanceof HTMLInputElement && autoSaveObsidianCheckbox instanceof HTMLInputElement) {
+        // Load saved Obsidian settings
+        chrome.storage.sync.get([
+            "obsidianVaultName",
+            "obsidianFolder",
+            "obsidianFileNameTemplate",
+            "autoSaveToObsidianAfterMeeting",
+        ], function (resultSyncUntyped) {
+            const resultSync = /** @type {ResultSync} */ (resultSyncUntyped)
+
+            obsidianVaultNameInput.value = resultSync.obsidianVaultName || ""
+            obsidianFolderInput.value = resultSync.obsidianFolder || ""
+            obsidianFileNameTemplateInput.value = resultSync.obsidianFileNameTemplate || DEFAULT_OBSIDIAN_FILENAME_TEMPLATE
+            autoSaveObsidianCheckbox.checked = resultSync.autoSaveToObsidianAfterMeeting === true
+
+            updateAutoDownloadCheckBox()
+        })
+
+        // Save vault name / folder / filename template
+        obsidianSettingsForm.addEventListener("submit", function (e) {
+            e.preventDefault()
+            chrome.storage.sync.set({
+                obsidianVaultName: obsidianVaultNameInput.value.trim(),
+                obsidianFolder: obsidianFolderInput.value.trim(),
+                obsidianFileNameTemplate: obsidianFileNameTemplateInput.value.trim() || DEFAULT_OBSIDIAN_FILENAME_TEMPLATE,
+            }, function () {
+                alert("Obsidian settings saved!")
+            })
+        })
+
+        // Auto save the auto-save-to-Obsidian toggle
+        autoSaveObsidianCheckbox.addEventListener("change", function () {
+            if (autoSaveObsidianCheckbox.checked && !obsidianVaultNameInput.value.trim()) {
+                alert("Please enter and save a vault name before enabling auto-save.")
+                autoSaveObsidianCheckbox.checked = false
+                return
+            }
+            chrome.storage.sync.set({
+                autoSaveToObsidianAfterMeeting: autoSaveObsidianCheckbox.checked,
+            }, function () {
+                updateAutoDownloadCheckBox()
+            })
         })
     }
 
@@ -263,6 +329,22 @@ function loadMeetings() {
                         )()}
                     </td>
                     <td>
+                        ${(
+                            () => {
+                                switch (meeting.obsidianSaveStatus) {
+                                    case "handed_off":
+                                        return `<span class="status-success">Sent</span>`
+                                    case "failed":
+                                        return `<span class="status-failed">Failed</span>`
+                                    case "pending":
+                                        return `<span class="status-new">Pending</span>`
+                                    default:
+                                        return `<span class="sub-text">Not sent</span>`
+                                }
+                            }
+                        )()}
+                    </td>
+                    <td>
                         <div style="display: flex; gap: 1rem; justify-content: end">
                             <button class="download-button" data-index="${i}" title="Download" aria-label="Download this meeting transcript">
                                 <img src="./icons/download.svg" alt="">
@@ -270,6 +352,10 @@ function loadMeetings() {
                             <button class="post-button" data-index="${i}" title="${meeting.webhookPostStatus === "new" ? `Post webhook` : `Repost webhook`}" aria-label="${meeting.webhookPostStatus === "new" ? `` : ``}">
                                 ${meeting.webhookPostStatus === "new" ? `` : ``}
                                 <img src="./icons/webhook.svg" alt="">
+                            </button>
+                            &nbsp;
+                            <button class="obsidian-save-button" data-index="${i}" title="Save to Obsidian" aria-label="Save this meeting to Obsidian">
+                                Save to Obsidian
                             </button>
                             &nbsp;
                              <button class="delete-button" data-index="${i}" title="Delete" aria-label="Delete this meeting">
@@ -364,6 +450,47 @@ function loadMeetings() {
                         })
                     }
 
+                    // Add event listener to the Obsidian save button
+                    const obsidianSaveButton = row.querySelector(".obsidian-save-button")
+                    if (obsidianSaveButton instanceof HTMLButtonElement) {
+                        obsidianSaveButton.addEventListener("click", function () {
+                            // Stable id — must match extension/obsidian/store.js's getMeetingId()
+                            const meetingId = meeting.meetingStartTimestamp
+
+                            obsidianSaveButton.disabled = true
+                            const originalText = obsidianSaveButton.textContent
+                            obsidianSaveButton.textContent = "Sending…"
+
+                            /** @type {ExtensionMessage} */
+                            const message = {
+                                type: "save_meeting_to_obsidian",
+                                meetingId: meetingId
+                            }
+                            chrome.runtime.sendMessage(message, (responseUntyped) => {
+                                const response = /** @type {ExtensionResponse} */ (responseUntyped)
+                                obsidianSaveButton.disabled = false
+                                obsidianSaveButton.textContent = originalText
+                                loadMeetings()
+                                if (response.success) {
+                                    // A new tab was opened to complete the handoff (and possibly
+                                    // show Chrome's "Open Obsidian?" prompt) — nothing more to do here.
+                                }
+                                else {
+                                    const parsedError = /** @type {ErrorObject} */ (response.message)
+                                    if (typeof parsedError === "object" && parsedError.errorCode === "018") {
+                                        alert("Please configure and save an Obsidian vault name first.")
+                                    }
+                                    else {
+                                        alert("Could not save to Obsidian")
+                                        if (typeof parsedError === "object") {
+                                            console.error(parsedError.errorMessage)
+                                        }
+                                    }
+                                }
+                            })
+                        })
+                    }
+
                     // Add event listener to the meeting delete button
                     const deleteButton = row.querySelector(".delete-button")
                     if (deleteButton instanceof HTMLButtonElement) {
@@ -384,7 +511,7 @@ function loadMeetings() {
                 }
             }
             else {
-                meetingsTable.innerHTML = `<tr><td colspan="4">Your next meeting will show up here</td></tr>`
+                meetingsTable.innerHTML = `<tr><td colspan="6">Your next meeting will show up here</td></tr>`
             }
         }
     })

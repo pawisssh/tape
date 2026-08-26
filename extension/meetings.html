@@ -154,6 +154,23 @@
             box-sizing: border-box;
         }
 
+        input[type="text"] {
+            width: 100%;
+            padding: 0.45rem;
+            border: 1px solid #2A9ACA;
+            border-radius: 4px;
+            background: rgba(255, 255, 255, 0.1);
+            color: #C0C0C0;
+            font-family: "TASA Explorer", sans-serif;
+            box-sizing: border-box;
+        }
+
+        code {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 0.1rem 0.3rem;
+            border-radius: 4px;
+        }
+
         .checkbox-group {
             display: flex;
             gap: 8px;
@@ -316,6 +333,17 @@
             font-size: smaller;
         }
 
+        .obsidian-save-button {
+            background: transparent;
+            color: #2A9ACA;
+            border: 1px solid #2A9ACA;
+            border-radius: 4px;
+            padding: 0.25rem 0.5rem;
+            font-size: smaller;
+            font-family: "TASA Explorer", sans-serif;
+            white-space: nowrap;
+        }
+
         .card-heading {
             margin: 0rem 1.5rem 1.25rem 1.5rem;
             font-weight: bold;
@@ -409,6 +437,7 @@
                             <th>Meeting software</th>
                             <th>Meeting start time and duration</th>
                             <th>Webhook status</th>
+                            <th>Obsidian status</th>
                             <th></th>
                         </tr>
                     </thead>
@@ -420,6 +449,68 @@
             <button id="show-all" style="display: none;">Show
                 all
             </button>
+        </section>
+
+        <section id="obsidian">
+            <h2 style="margin-bottom: 0;">Save transcripts to Obsidian</h2>
+
+            <p style="margin-top: 0.5rem" class="sub-text">TranscripTonic can hand transcripts off to Obsidian as a new
+                note. The vault name must exactly match the name shown in Obsidian's vault switcher, and the
+                destination folder must already exist in that vault.</p>
+
+            <div class="grid-container">
+                <div class="card">
+                    <div class="webhook-header" style="display: flex; gap: 0.5rem; align-items: center;">
+                        <p class="card-heading">Configure Obsidian export</p>
+                    </div>
+                    <form id="obsidian-settings-form">
+                        <div class="form-field">
+                            <label for="obsidian-vault-name">Vault name</label>
+                            <div class="input-group">
+                                <input type="text" id="obsidian-vault-name" placeholder="My vault">
+                            </div>
+                            <p class="sub-text" style="margin: 0.35rem 0 0 0;">Must exactly match the vault name in
+                                Obsidian's vault switcher (case-sensitive).</p>
+                        </div>
+
+                        <div class="form-field">
+                            <label for="obsidian-folder">Folder (optional)</label>
+                            <div class="input-group">
+                                <input type="text" id="obsidian-folder" placeholder="Meetings/TranscripTonic">
+                            </div>
+                            <p class="sub-text" style="margin: 0.35rem 0 0 0;">Vault-relative path. Leave blank to
+                                save to the vault root. This folder must already exist in your vault.</p>
+                        </div>
+
+                        <div class="form-field">
+                            <label for="obsidian-filename-template">Filename template</label>
+                            <div class="input-group">
+                                <input type="text" id="obsidian-filename-template"
+                                    placeholder="{{date}} - {{title}}">
+                            </div>
+                            <p class="sub-text" style="margin: 0.35rem 0 0 0;">Available tokens: <code>{{date}}</code>,
+                                <code>{{time}}</code>, <code>{{title}}</code>, <code>{{software}}</code>. Example:
+                                <code>{{date}} {{time}} {{title}} {{software}}</code>.
+                            </p>
+                        </div>
+
+                        <div class="form-field">
+                            <button id="save-obsidian-settings" type="submit">Save</button>
+                        </div>
+
+                        <hr />
+
+                        <div class="form-field">
+                            <div class="checkbox-group">
+                                <input type="checkbox" id="auto-save-obsidian">
+                                <label for="auto-save-obsidian">
+                                    Automatically save transcript to Obsidian, after each meeting
+                                </label>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+            </div>
         </section>
 
         <section id="webhooks">

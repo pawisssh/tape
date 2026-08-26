@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TranscripTonic—Save to Obsidian</title>
+    <style>
+        @import url("https://fonts.googleapis.com/css2?family=TASA+Explorer:wght@400;700&display=swap");
+
+        body {
+            font-family: "TASA Explorer", sans-serif;
+            padding: 3rem;
+            color: #C0C0C0;
+            background: #071f29;
+            font-size: 1rem;
+            max-width: 640px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            margin: 0.5rem 0rem 1.5rem 0rem;
+        }
+
+        .card {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 1.5rem;
+            border-radius: 8px;
+        }
+
+        #meeting-title {
+            font-weight: bold;
+            margin-bottom: 1rem;
+        }
+
+        #status {
+            line-height: 1.5;
+        }
+
+        .sub-text {
+            font-weight: normal;
+            color: #a0a0a0;
+            font-size: small;
+        }
+
+        button {
+            background: #2A9ACA;
+            color: #071f29;
+            border: none;
+            padding: 0.5rem 1rem;
+            border-radius: 4px;
+            font-family: "TASA Explorer", sans-serif;
+            font-weight: bold;
+            cursor: pointer;
+            margin-top: 1.5rem;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>Save to Obsidian</h1>
+    <div class="card">
+        <div id="meeting-title">Loading meeting…</div>
+        <div id="status">Starting…</div>
+        <button id="close-tab">Close this tab</button>
+        <p class="sub-text">
+            If Chrome asks "Open Obsidian?", click Allow (and "Always allow" to skip this
+            prompt for future meetings). This prompt is tab-modal — closing this tab before
+            answering it will dismiss the prompt without opening Obsidian.
+        </p>
+    </div>
+
+    <script type="module" src="handoff.js"></script>
+</body>
+
+</html>

@@ -1,6 +1,7 @@
 import { ALARM_NAME } from "./config.js"
-import { processLastMeeting, recoverLastMeeting } from "./meetings.js"
+import { processLastMeeting, recoverLastMeeting, triggerObsidianHandoffIfConfigured } from "./meetings.js"
 import { downloadTranscript, postTranscriptToWebhook } from "./exporters.js"
+import { getMeetingById } from "../obsidian/store.js"
 import {
     getPermissionStatus,
     requestPlatformPermission,
@@ -248,6 +249,41 @@ chrome.runtime.onMessage.addListener(function (messageUnTyped, sender, sendRespo
             const response = { success: false, message: parsedError }
             sendResponse(response)
         })
+    }
+
+    if (message.type === "save_meeting_to_obsidian") {
+        if (typeof message.meetingId === "string" && message.meetingId) {
+            getMeetingById(message.meetingId).then((meeting) => {
+                if (!meeting) {
+                    /** @type {ExtensionResponse} */
+                    const response = { success: false, message: { errorCode: "017", errorMessage: "Meeting not found for given id" } }
+                    sendResponse(response)
+                    return
+                }
+
+                triggerObsidianHandoffIfConfigured(meeting, false).then((result) => {
+                    if (result.opened) {
+                        /** @type {ExtensionResponse} */
+                        const response = { success: true }
+                        sendResponse(response)
+                    }
+                    else {
+                        /** @type {ExtensionResponse} */
+                        const response = { success: false, message: { errorCode: "018", errorMessage: "Obsidian vault not configured" } }
+                        sendResponse(response)
+                    }
+                }).catch((error) => {
+                    /** @type {ExtensionResponse} */
+                    const response = { success: false, message: { errorCode: "018", errorMessage: String(error) } }
+                    sendResponse(response)
+                })
+            })
+        }
+        else {
+            /** @type {ExtensionResponse} */
+            const response = { success: false, message: { errorCode: "015", errorMessage: "Invalid meetingId" } }
+            sendResponse(response)
+        }
     }
 
     if (message.type === "open_side_panel") {

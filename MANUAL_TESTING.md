@@ -10,11 +10,26 @@ notes) once done.
 
 ## Before you start: load the extension
 
-1. Open `chrome://extensions`.
-2. Enable "Developer mode" (top right).
-3. Click "Load unpacked" and select the `extension/` folder in this repo (not the repo
-   root).
-4. Confirm the extension loads with no errors shown on the extensions page.
+**As of Phase 5, the extension is built with Vite and loaded from `dist/`, not from the
+`extension/` folder directly.** `extension/` no longer contains its own `manifest.json` —
+building is required.
+
+1. From the repo root, run `npm install` (first time only) then `npm run build`. This
+   produces a `dist/` folder.
+2. Open `chrome://extensions`.
+3. Enable "Developer mode" (top right).
+4. Click "Load unpacked" and select the `dist/` folder in this repo (not `extension/`
+   and not the repo root).
+5. Confirm the extension loads with no errors shown on the extensions page.
+
+If you re-run `npm run build` after pulling new changes, click the reload icon for the
+extension on `chrome://extensions` (or remove and re-add it) to pick up the new `dist/`
+contents — Chrome does not watch the folder for changes.
+
+Steps 1-2 for Phases 1/3/4 below (which predate the Phase 5 rewrite) still say "load
+`extension/` unpacked" in a couple of places from when they were first written — treat
+every such reference as "load `dist/` unpacked" per the steps above; the underlying
+settings/storage/message-passing behavior those phases test is unchanged by Phase 5.
 
 ---
 
@@ -252,6 +267,127 @@ from before this round of changes (Phase 4 added new files/settings).
 
 ---
 
-## Phase 5 — Full UI rewrite (not yet implemented)
+## Phase 5 — Full UI rewrite manual verification
 
-Not started.
+Vite + CRXJS + React + TypeScript + Tailwind + shadcn/ui (on Base UI) now build the
+popup, the history page (`meetings.html`, moved to the repo root — see `PLAN.md` §6
+Phase 5 for why), and the Obsidian handoff page (`extension/obsidian/handoff.html`,
+still at the same path, now a React shell). The side panel
+(`extension/side-panel/index.html` + `side-panel.js`) and the in-meeting FAB
+(`extension/content-scripts/**`) were intentionally left exactly as upstream shipped
+them — see "What was NOT rebuilt" below.
+
+Automated checks already run by the implementing session (not a substitute for the
+steps below, which require a human): `npm run build` succeeds; `dist/content-scripts/**`
+is byte-identical to `extension/content-scripts/**` (verified with `diff -rq`); `npm
+test` (77/77 tests, unmodified); `npm run typecheck` shows only pre-existing upstream
+errors (documented in this file's history — see the Phase 2 entries — none of the new
+`src/**/*.tsx` code adds any).
+
+### Step A: load the built extension
+
+1. Run `npm install` then `npm run build` from the repo root.
+2. Load `dist/` unpacked per "Before you start" above.
+3. Open `chrome://extensions`, confirm **zero errors** are shown for the extension
+   (click "Errors" if the button appears — it should not).
+4. Click the extension icon to open the **popup**. Confirm:
+   - It renders correctly (TranscripTonic heading, icon, platform checkboxes, auto/manual
+     mode radio buttons, hide-captions checkbox, webhook blurb, footer links, version
+     number).
+   - Open the browser DevTools console for the popup (right-click the popup → Inspect)
+     and confirm there are **no console errors**.
+5. Click "Last 10 meetings" (or open `chrome-extension://<id>/meetings.html` directly).
+   Confirm the **history page** renders (meetings table, Obsidian settings, LLM
+   settings, webhook settings/help) with **no console errors**.
+
+### Step B: re-run the Phase 3 checklist against the new UI
+
+6. Repeat **Phase 3, Steps A-E** above in full, using the popup/history page you just
+   loaded from `dist/`. Everything there (vault name/folder/filename template form,
+   auto-save checkbox, the meetings table's Obsidian status column and "Save to
+   Obsidian" button, special-character title handling) should work identically to
+   before — confirm no regressions.
+
+### Step C: re-run the Phase 4 checklist against the new UI
+
+7. Repeat **Phase 4, Steps A-C** above in full. Pay particular attention to Step A.6 —
+   the permission-request prompt must still fire directly from clicking the "Enable
+   local LLM summary enrichment" checkbox (a real user gesture) even though that
+   checkbox is now a Base UI `Checkbox` component, not a native `<input type=checkbox>`.
+8. Confirm the "View summary" disclosure on a meeting row (now a Base UI `Collapsible`)
+   expands/collapses correctly and shows the cached summary text.
+
+### Step D: Obsidian handoff page — status stepper
+
+9. Trigger a handoff (either a real meeting with auto-save on, or "Save to Obsidian" on
+   a past meeting). The handoff tab should open `extension/obsidian/handoff.html` and
+   show a **step list** (Load meeting → Summarize with local LLM → Build note → Copy to
+   clipboard → Open Obsidian), each with a status pill (Pending/Working…/Done/
+   Skipped/Failed).
+10. Confirm steps update live as the flow progresses, and that whichever steps don't
+    apply (e.g. "Summarize with local LLM" when the LLM feature is off, or "Copy to
+    clipboard" for a short note that goes inline) show **Skipped**, not stuck on
+    Pending.
+11. Confirm the **"Close this tab" button is present the entire time and is never
+    auto-triggered** — if Chrome shows the "Open Obsidian?" prompt, it must still be
+    sitting there waiting for you; closing the tab yourself before answering it should
+    dismiss the prompt (this is expected/by-design, not a bug — see "Known limitations"
+    above).
+12. Force a failure path (e.g. clear the vault name first, or trigger two handoffs back
+    to back to hit the clipboard lock) and confirm the relevant step shows **Failed**
+    with a short explanatory detail, and the final message below the steps explains
+    what happened — no blank/frozen page.
+
+### Step E: Base UI primitives — keyboard nav and focus behavior
+
+The whole point of building on Base UI (not Radix) is that these interactive primitives
+actually work correctly — verify by hand, not just by reading the code:
+
+13. On the history page, **Tab** to the "Enable local LLM summary enrichment" checkbox
+    (or any checkbox) without touching the mouse. Confirm it shows a visible focus ring,
+    and pressing **Space** toggles it.
+14. **Tab** to the webhook body type radio group (Simple/Advanced). Confirm the
+    **arrow keys** move selection between the two options and Tab moves focus into/out
+    of the group as a whole (not stopping on each radio individually) — standard radio
+    group keyboard behavior.
+15. Open the delete-confirmation flow for a meeting row (or any other native `confirm()`
+    dialog used in the row actions) and confirm it still works — these intentionally
+    stayed as native `confirm()`/`alert()` rather than being rebuilt as a Base UI
+    `Dialog` (see "Deviations" below).
+16. Expand a "View summary" or "Webhook body" `Collapsible` using only the keyboard
+    (Tab to it, press **Enter** or **Space**). Confirm it expands/collapses and that
+    focus stays sensible (doesn't jump away or get lost).
+17. With your browser DevTools open, inspect the DOM of the rendered Checkbox/
+    Collapsible/RadioGroup elements. Confirm the markup uses **Base UI's** own data
+    attributes/structure (e.g. elements and attributes referencing `base-ui`, not
+    `radix`) — this is a final sanity check that the `shadcn` install actually landed on
+    the Base UI backend as required, not Radix.
+
+### What was NOT rebuilt in React (and why)
+
+- **Side panel** (`extension/side-panel/index.html` + `side-panel.js`): carried over
+  from upstream completely unmodified — not even its build path changed conceptually
+  (it's still bundled by CRXJS since it's manifest-declared, but the source is byte-for-
+  byte what upstream shipped). This was a deliberate time/complexity trade-off allowed
+  by `PLAN.md` §6 Phase 5 build-sequencing step 7 ("Side panel, only if time allows,
+  otherwise carry over upstream's as-is"). If you notice anything different about its
+  behavior versus pre-Phase-5, that would be a real regression worth flagging — but none
+  is expected, since the file is untouched.
+- **In-meeting FAB** (drawn by `extension/content-scripts/common-utils.js`): left
+  entirely as-is, not even a CSS reskin. `extension/content-scripts/**` had to stay
+  byte-identical to `dist/content-scripts/**` for the Phase 5 Definition of Done (it's
+  copied verbatim, not processed by Vite, since it's registered at runtime via
+  `chrome.scripting.registerContentScripts()` rather than declared in the manifest) —
+  touching it for a cosmetic reskin wasn't worth trading away that guarantee. Confirm
+  the FAB still looks and behaves exactly as it did pre-Phase-5 during your Phase 1/3/4
+  re-verification above.
+
+### Record results here
+
+| Step | Date | Pass/Fail | Notes |
+|---|---|---|---|
+| A (load dist/, popup + history page render, no console errors) | | | |
+| B (Phase 3 checklist re-run against new UI) | | | |
+| C (Phase 4 checklist re-run against new UI) | | | |
+| D (Obsidian handoff status stepper) | | | |
+| E (Base UI keyboard nav / focus / DOM inspection) | | | |

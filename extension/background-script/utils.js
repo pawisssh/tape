@@ -17,7 +17,7 @@ export function checkAndCreateAlarm() {
 
 /**
  * Format transcript entries into string
- * @param {TranscriptBlock[] | []} transcript
+ * @param {TranscriptBlock[]} transcript
  */
 export function getTranscriptString(transcript) {
     let transcriptString = ""

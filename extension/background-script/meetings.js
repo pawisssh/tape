@@ -184,8 +184,13 @@ export function triggerObsidianHandoffIfConfigured(meeting, auto) {
         const meetingId = getMeetingId(meeting)
         return updateMeetingById(meetingId, () => ({ obsidianSaveStatus: "pending" }))
             .then(() => {
+                // Phase 5 note: the built dist/ output mirrors extension/obsidian/handoff.html's
+                // own repo-relative source path (Vite mirrors the input file's path, not an
+                // arbitrary Rollup input key — see vite.config.ts) — so this getURL() path carries
+                // the "extension/" prefix to match, unlike pre-Phase-5 where the unpacked root was
+                // extension/ itself and no prefix was needed.
                 chrome.tabs.create({
-                    url: chrome.runtime.getURL(`obsidian/handoff.html?meetingId=${encodeURIComponent(meetingId)}&auto=${auto}`)
+                    url: chrome.runtime.getURL(`extension/obsidian/handoff.html?meetingId=${encodeURIComponent(meetingId)}&auto=${auto}`)
                 })
                 return { opened: true }
             })

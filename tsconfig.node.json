@@ -1,7 +1,5 @@
 {
     "compilerOptions": {
-        "allowJs": true,
-        "checkJs": true,
         "strict": false,
         "skipLibCheck": true,
         "noEmit": true,
@@ -11,25 +9,15 @@
         "resolveJsonModule": true,
         "isolatedModules": true,
         "allowImportingTsExtensions": true,
-        "jsx": "react-jsx",
         "lib": [
             "ES2022",
-            "DOM",
-            "DOM.Iterable"
+            "DOM"
         ],
-        "baseUrl": ".",
-        "paths": {
-            "@/*": ["./src/*"]
-        },
-        "types": []
+        "types": ["node"]
     },
     "include": [
-        "extension/**/*",
-        "types/**/*",
-        "src/**/*"
-    ],
-    "exclude": [
         "vite.config.ts",
-        "manifest.config.ts"
+        "manifest.config.ts",
+        "types/chrome.d.ts"
     ]
 }

@@ -136,7 +136,7 @@ export default function App() {
             patchStep("markdown", { status: "done" })
 
             if (built.mode === "clipboard") {
-                patchStep("deliver", { status: "active" })
+                patchStep("deliver", { status: "active", detail: "Copying to clipboard…" })
                 const locked = await acquireClipboardLock()
                 if (!locked) {
                     patchStep("deliver", {
@@ -150,10 +150,37 @@ export default function App() {
                     await markStatus(meetingId, "failed")
                     return
                 }
+
+                // The handoff tab is opened via chrome.tabs.create() right as a Meet call
+                // ends, and the browser doesn't always bring it (or its window) into focus
+                // immediately — navigator.clipboard.writeText() throws a NotAllowedError/
+                // DOMException in an unfocused document. Force focus first (best-effort,
+                // non-fatal), then still fall back to the legacy execCommand("copy")
+                // technique if the Clipboard API attempt fails anyway.
+                await focusThisWindow()
+
+                const clipboardText = built.content ?? content
+                let copied = false
                 try {
-                    await navigator.clipboard.writeText(built.content ?? content)
+                    await navigator.clipboard.writeText(clipboardText)
+                    copied = true
                 } catch (err) {
-                    console.error("[obsidian-handoff] clipboard write failed", err)
+                    console.error(
+                        "[obsidian-handoff] clipboard write failed, trying document.execCommand('copy') fallback",
+                        err,
+                    )
+                    patchStep("deliver", { status: "active", detail: "Retrying copy…" })
+                    try {
+                        copied = copyViaExecCommand(clipboardText)
+                        if (!copied) {
+                            console.error("[obsidian-handoff] execCommand('copy') fallback returned false")
+                        }
+                    } catch (fallbackErr) {
+                        console.error("[obsidian-handoff] execCommand('copy') fallback threw", fallbackErr)
+                    }
+                }
+
+                if (!copied) {
                     patchStep("deliver", { status: "failed", detail: "Could not copy the note to the clipboard." })
                     patchStep("launch", { status: "skipped" })
                     setFinalMessage('Could not copy the note to the clipboard. Please retry "Save to Obsidian" for this meeting.')
@@ -229,6 +256,46 @@ export default function App() {
             </div>
         </div>
     )
+}
+
+// Best-effort attempt to bring this tab's window into focus before writing to the
+// clipboard. navigator.clipboard.writeText() requires document focus, and the handoff
+// tab is opened programmatically (chrome.tabs.create()) right as a Meet call ends, so
+// the browser doesn't always focus it (or its window) immediately. Never let a failure
+// here (e.g. missing "windows" permission, already focused, etc.) block the flow.
+async function focusThisWindow() {
+    try {
+        const win = await chrome.windows.getCurrent()
+        if (win.id !== undefined && win.id !== chrome.windows.WINDOW_ID_NONE) {
+            await chrome.windows.update(win.id, { focused: true })
+        }
+        // Give the browser a beat to actually apply focus before the clipboard write.
+        await new Promise((resolve) => setTimeout(resolve, 150))
+    } catch (err) {
+        console.warn("[obsidian-handoff] could not force window focus (continuing anyway)", err)
+    }
+}
+
+// Legacy fallback for when the async Clipboard API throws (typically a NotAllowedError
+// DOMException because the document isn't focused). Uses a hidden, off-screen
+// (not display:none — execCommand needs the element rendered/selectable) textarea.
+function copyViaExecCommand(text: string): boolean {
+    const textarea = document.createElement("textarea")
+    textarea.value = text
+    textarea.setAttribute("readonly", "")
+    textarea.style.position = "fixed"
+    textarea.style.top = "0"
+    textarea.style.left = "-9999px"
+    textarea.style.opacity = "0"
+    document.body.appendChild(textarea)
+    try {
+        textarea.focus()
+        textarea.select()
+        textarea.setSelectionRange(0, textarea.value.length)
+        return document.execCommand("copy")
+    } finally {
+        document.body.removeChild(textarea)
+    }
 }
 
 async function markStatus(meetingId: string, status: ObsidianSaveStatus) {

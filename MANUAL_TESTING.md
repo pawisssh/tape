@@ -357,6 +357,16 @@ errors (documented in this file's history — see the Phase 2 entries — none o
     to back to hit the clipboard lock) and confirm the relevant step shows **Failed**
     with a short explanatory detail, and the final message below the steps explains
     what happened — no blank/frozen page.
+12a. **Clipboard-copy-while-unfocused fix.** With a note large enough to trigger
+    clipboard delivery mode (i.e. the "Copy to clipboard" step is not Skipped), trigger
+    a handoff and immediately click away to another window/app so the new handoff tab
+    is *not* the focused window when the copy would normally happen. Confirm the note
+    still ends up on the clipboard (paste it somewhere to check) and the "Copy to
+    clipboard" step still shows **Done** — this exercises the window-focus-forcing +
+    `execCommand("copy")` fallback added to fix the
+    `[obsidian-handoff] clipboard write failed [object DOMException]` bug. Then open
+    `chrome://extensions` (or `edge://extensions`), find the TranscripTonic card, and
+    click **Errors** — confirm no new errors were logged for this run.
 
 ### Step E: Base UI primitives — keyboard nav and focus behavior
 
@@ -410,4 +420,5 @@ actually work correctly — verify by hand, not just by reading the code:
 | B (Phase 3 checklist re-run against new UI) | | | |
 | C (Phase 4 checklist re-run against new UI) | | | |
 | D (Obsidian handoff status stepper) | | | |
+| D2 (clipboard copy while handoff tab unfocused + no new errors console) | | | |
 | E (Base UI keyboard nav / focus / DOM inspection) | | | |

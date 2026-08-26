@@ -59,6 +59,15 @@ export default defineConfig({
         }),
     ],
     build: {
+        // Vite's default modulePreload behavior injects <link rel="modulepreload"> tags
+        // into the built HTML pages. Chrome's extension-page isolated-worlds security
+        // model doesn't recognize those preloads as satisfying the actual module import,
+        // so it logs noisy "cross-world extension resource mismatch" warnings in the
+        // extension's error console for every chunk — functionally mostly-harmless, but
+        // makes the extension look broken. Disabling the polyfill/link injection here is
+        // the standard fix for this class of warning in Vite-based Chrome extension
+        // builds.
+        modulePreload: false,
         rollupOptions: {
             input: {
                 meetings: resolve(import.meta.dirname, "meetings.html"),

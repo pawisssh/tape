@@ -1,9 +1,13 @@
 import { defineManifest } from "@crxjs/vite-plugin"
 
 // Replaces the static extension/manifest.json (Phase 5). Preserves upstream's exact
-// permission set plus the two documented additions (clipboardWrite from Phase 3,
+// permission set plus the documented additions (clipboardWrite from Phase 3,
 // optional_host_permissions already included "*://*/*" for Phase 4's LLM endpoint
-// permission request flow) — see PLAN.md §6 Phase 5 / §8.
+// permission request flow, and windows — added for the Obsidian handoff page's
+// clipboard-focus fix: chrome.windows.getCurrent()/chrome.windows.update() force the
+// handoff tab's window into focus before writing to the clipboard, since
+// navigator.clipboard.writeText() throws when the document isn't focused) — see
+// PLAN.md §6 Phase 5 / §8.
 //
 // HTML page paths below are the *source* paths CRXJS/Vite bundle from — for pages
 // declared here (action.default_popup, side_panel.default_path), CRXJS automatically
@@ -36,6 +40,7 @@ export default defineManifest({
         "alarms",
         "sidePanel",
         "clipboardWrite",
+        "windows",
     ],
     host_permissions: ["https://meet.google.com/*"],
     optional_permissions: ["notifications"],

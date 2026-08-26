@@ -420,5 +420,5 @@ actually work correctly — verify by hand, not just by reading the code:
 | B (Phase 3 checklist re-run against new UI) | | | |
 | C (Phase 4 checklist re-run against new UI) | | | |
 | D (Obsidian handoff status stepper) | | | |
-| D2 (clipboard copy while handoff tab unfocused + no new errors console) | | | |
+| D2 (clipboard copy while handoff tab unfocused + no new errors console) | 2026-08-26 | Pass | Rebuilt, reloaded unpacked from `dist/`, retested end-to-end. |
 | E (Base UI keyboard nav / focus / DOM inspection) | | | |

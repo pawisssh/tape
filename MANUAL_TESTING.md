@@ -129,11 +129,11 @@ unmodified from upstream behavior.
 
 | Step | Date | Pass/Fail | Notes |
 |---|---|---|---|
-| A (settings UI) | | | |
-| B (end-to-end auto-save) | | | |
-| C ("Always allow" suppresses prompt) | | | |
-| D (special characters in title) | | | |
-| E (manual "Save to Obsidian") | | | |
+| A (settings UI) | 2026-08-26 | Pass | |
+| B (end-to-end auto-save) | 2026-08-26 | Pass | First attempt failed because the unpacked extension hadn't been reloaded after Phase 2/3 changes; passed after reload. |
+| C ("Always allow" suppresses prompt) | | | Not separately confirmed |
+| D (special characters in title) | | | Not separately confirmed |
+| E (manual "Save to Obsidian") | | | Not separately confirmed |
 
 ---
 

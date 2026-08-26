@@ -43,18 +43,6 @@ export default defineConfig({
                     dest: "content-scripts",
                     rename: { stripBase: 2 },
                 },
-                // extension/side-panel/index.html links side-panel.js with a plain (non-module)
-                // <script src>, so Vite's HTML pipeline leaves that reference untouched rather
-                // than bundling it (see the "can't be bundled without type=module" build warning)
-                // — the side panel is carried over from upstream as-is (Phase 5 build-sequencing
-                // step 7: only rebuilt in React "if time allows", otherwise left alone), so the
-                // plain script is copied verbatim alongside the CRXJS-processed HTML instead of
-                // being rewritten to a module script.
-                {
-                    src: "extension/side-panel/side-panel.js",
-                    dest: "extension/side-panel",
-                    rename: { stripBase: 2 },
-                },
             ],
         }),
     ],

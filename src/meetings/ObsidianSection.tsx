@@ -1,5 +1,8 @@
 import { useEffect, useState } from "react"
+import { BookOpen } from "lucide-react"
+import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardAction } from "@/components/ui/card"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -50,20 +53,24 @@ export default function ObsidianSection() {
     }
 
     return (
-        <section id="obsidian" className="mb-20">
-            <h2 className="text-xl font-bold">Save transcripts to Obsidian</h2>
-            <p className="text-muted-foreground mt-2 mb-4">
-                TranscripTonic can hand transcripts off to Obsidian as a new note. The vault name must exactly match
-                the name shown in Obsidian's vault switcher, and the destination folder must already exist in that
-                vault.
-            </p>
-
-            <div className="grid grid-cols-1 items-start gap-4 md:grid-cols-2">
-                <div className="bg-foreground/5 rounded-lg py-6">
-                    <div className="bg-primary/10 -mt-6 mb-6 flex items-center gap-2 px-6 py-4">
-                        <p className="font-bold">Configure Obsidian export</p>
-                    </div>
-                    <form onSubmit={handleSubmit} className="flex flex-col gap-6 px-6">
+        <Card>
+            <CardHeader>
+                <div className="flex items-center gap-2">
+                    <BookOpen className="text-muted-foreground size-5" />
+                    <CardTitle>Obsidian</CardTitle>
+                </div>
+                <CardDescription>
+                    Hand transcripts off to Obsidian as a new note. The vault name must exactly match the name shown
+                    in Obsidian's vault switcher, and the destination folder must already exist in that vault.
+                </CardDescription>
+                <CardAction>
+                    <Badge variant={vaultName ? "default" : "outline"}>
+                        {vaultName ? "Configured" : "Not configured"}
+                    </Badge>
+                </CardAction>
+            </CardHeader>
+            <CardContent>
+                <form onSubmit={handleSubmit} className="flex flex-col gap-6">
                         <div>
                             <Label htmlFor="obsidian-vault-name">Vault name</Label>
                             <Input
@@ -125,8 +132,7 @@ export default function ObsidianSection() {
                             <Label htmlFor="auto-save-obsidian">Automatically save transcript to Obsidian, after each meeting</Label>
                         </div>
                     </form>
-                </div>
-            </div>
-        </section>
+                </CardContent>
+        </Card>
     )
 }

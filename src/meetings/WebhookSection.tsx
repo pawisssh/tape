@@ -1,5 +1,8 @@
 import { useEffect, useState } from "react"
+import { Webhook } from "lucide-react"
+import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardAction } from "@/components/ui/card"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -7,7 +10,6 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { getSync, onStorageChanged, setSync } from "@/lib/chrome-storage"
 import { requestPermissions, webhookOriginPattern } from "@/lib/permissions"
-import webhookWhiteIcon from "../../extension/icons/webhook-white.svg"
 import guideIcon from "../../extension/icons/guide.svg"
 
 const SIMPLE_BODY_EXAMPLE = `{
@@ -138,20 +140,25 @@ export default function WebhookSection() {
     }
 
     return (
-        <section id="webhooks" className="mb-20">
-            <h2 className="text-xl font-bold">Integrate TranscripTonic with your favourite tools</h2>
-            <p className="text-muted-foreground mt-2 mb-4">
-                You can connect TranscripTonic directly to any tool that supports webhooks. If it does not, you can
-                use automation tools like n8n as a bridge.
-            </p>
-
-            <div className="grid grid-cols-1 items-start gap-4 md:grid-cols-2">
-                <div className="bg-foreground/5 rounded-lg py-6">
-                    <div className="bg-primary/10 -mt-6 mb-6 flex items-center gap-2 px-6 py-4">
-                        <p className="font-bold">Configure webhook</p>
-                        <img src={webhookWhiteIcon} alt="" width={20} />
+        <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-2">
+            <Card>
+                <CardHeader>
+                    <div className="flex items-center gap-2">
+                        <Webhook className="text-muted-foreground size-5" />
+                        <CardTitle>Webhook</CardTitle>
                     </div>
-                    <form onSubmit={handleSubmit} className="px-6">
+                    <CardDescription>
+                        Connect TranscripTonic directly to any tool that supports webhooks. If it does not, use
+                        automation tools like n8n as a bridge.
+                    </CardDescription>
+                    <CardAction>
+                        <Badge variant={webhookUrl ? "default" : "outline"}>
+                            {webhookUrl ? "Configured" : "Not configured"}
+                        </Badge>
+                    </CardAction>
+                </CardHeader>
+                <CardContent>
+                    <form onSubmit={handleSubmit}>
                         <Label htmlFor="webhook-url">Webhook URL</Label>
                         <div className="mt-2 flex">
                             <Input
@@ -170,7 +177,7 @@ export default function WebhookSection() {
 
                     <hr className="my-6" />
 
-                    <div className="px-6">
+                    <div>
                         <div className="flex items-center gap-2">
                             <Checkbox id="auto-post-webhook" checked={autoPost} onCheckedChange={(v) => handleAutoPostChange(v === true)} />
                             <Label htmlFor="auto-post-webhook">Automatically post transcript to webhook URL, after each meeting</Label>
@@ -189,7 +196,7 @@ export default function WebhookSection() {
 
                     <hr className="my-6" />
 
-                    <RadioGroup value={bodyType} onValueChange={handleBodyTypeChange} className="gap-4 px-6">
+                    <RadioGroup value={bodyType} onValueChange={handleBodyTypeChange} className="gap-4">
                         <div className="flex items-start gap-2">
                             <RadioGroupItem value="simple" id="simple-webhook-body" className="mt-0.5" />
                             <Label htmlFor="simple-webhook-body" className="flex-col items-start font-normal">
@@ -205,14 +212,16 @@ export default function WebhookSection() {
                             </Label>
                         </div>
                     </RadioGroup>
-                </div>
+                </CardContent>
+            </Card>
 
-                <div className="bg-foreground/5 rounded-lg py-6">
-                    <div className="bg-primary/10 -mt-6 mb-6 flex items-center gap-2 px-6 py-4">
-                        <p className="font-bold">Webhook help</p>
-                    </div>
-                    <p className="px-6 font-bold">Webhook integration guides</p>
-                    <div className="grid grid-cols-1 gap-3 px-6 py-3 sm:grid-cols-2">
+            <Card>
+                <CardHeader>
+                    <CardTitle>Webhook help</CardTitle>
+                </CardHeader>
+                <CardContent>
+                    <p className="font-bold">Webhook integration guides</p>
+                    <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
                         <a
                             className="border-primary/50 text-primary flex items-start gap-2 rounded-lg border p-2 font-bold"
                             href="https://github.com/vivek-nexus/transcriptonic/wiki/Google-Docs-integration-guide?utm_source=extension"
@@ -233,8 +242,8 @@ export default function WebhookSection() {
                         </a>
                     </div>
                     <hr className="my-6" />
-                    <p className="px-6 font-bold">Webhook JSON body</p>
-                    <div className="px-6">
+                    <p className="font-bold">Webhook JSON body</p>
+                    <div>
                         <Collapsible>
                             <CollapsibleTrigger className="text-primary font-bold">Webhook body (simple)</CollapsibleTrigger>
                             <CollapsibleContent>
@@ -252,8 +261,8 @@ export default function WebhookSection() {
                             </CollapsibleContent>
                         </Collapsible>
                     </div>
-                </div>
-            </div>
-        </section>
+                </CardContent>
+            </Card>
+        </div>
     )
 }

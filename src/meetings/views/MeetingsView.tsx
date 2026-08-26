@@ -2,9 +2,10 @@ import { useEffect, useRef, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { getLocal, onStorageChanged, setLocal } from "@/lib/chrome-storage"
 import { asErrorObject, sendMessage } from "@/lib/messaging"
-import MeetingRow from "./MeetingRow"
+import AgendaMeetingRow from "../agenda/AgendaMeetingRow"
+import { groupMeetingsByDay } from "../agenda/group-by-day"
 
-export default function MeetingsSection() {
+export default function MeetingsView() {
     const [meetings, setMeetings] = useState<Meeting[]>([])
     const [isRecovering, setIsRecovering] = useState(false)
     const [isExpanded, setIsExpanded] = useState(false)
@@ -39,7 +40,7 @@ export default function MeetingsSection() {
             setNeedsExpandButton(false)
             return
         }
-        setNeedsExpandButton(containerRef.current.clientHeight > 280)
+        setNeedsExpandButton(containerRef.current.clientHeight > 480)
     }, [meetings, isExpanded])
 
     function handleRecoverLastMeeting() {
@@ -79,38 +80,38 @@ export default function MeetingsSection() {
     }
 
     // Reverse-order display (latest first) while keeping each row's `index` prop tied to
-    // the underlying storage array position — download/webhook/delete all address
-    // meetings by that index.
+    // the underlying storage array position — download/webhook/delete/obsidian all
+    // address meetings by that index.
     const displayOrder = meetings.map((meeting, index) => ({ meeting, index })).reverse()
+    const dayGroups = groupMeetingsByDay(displayOrder)
 
     return (
-        <section id="last-10-meetings" className="mb-20">
+        <div>
             <div className="mb-4 flex items-center justify-between">
-                <h2 className="text-xl font-bold">Last 10 meetings</h2>
+                <div>
+                    <h1 className="text-2xl font-bold">Meetings</h1>
+                    <p className="text-muted-foreground mt-1 text-sm">Your last {meetings.length} meetings.</p>
+                </div>
                 <Button variant="outline" disabled={isRecovering} onClick={handleRecoverLastMeeting}>
                     {isRecovering ? "Recovering…" : "Recover last meeting"}
                 </Button>
             </div>
+
             <div
                 ref={containerRef}
-                className={`overflow-x-auto ${!isExpanded && needsExpandButton ? "max-h-80 overflow-y-hidden [mask-image:linear-gradient(to_bottom,black_0%,black_90%,transparent_100%)]" : ""}`}
+                className={`overflow-hidden rounded-xl border ${!isExpanded && needsExpandButton ? "relative max-h-[30rem] [mask-image:linear-gradient(to_bottom,black_0%,black_85%,transparent_100%)]" : ""}`}
             >
-                <table className="bg-foreground/5 w-full border-collapse rounded-lg">
-                    <thead>
-                        <tr className="bg-primary/10">
-                            <th className="px-4 py-3 text-left font-bold">Meeting title</th>
-                            <th className="px-4 py-3 text-left font-bold">Meeting software</th>
-                            <th className="px-4 py-3 text-left font-bold">Meeting start time and duration</th>
-                            <th className="px-4 py-3 text-left font-bold">Webhook status</th>
-                            <th className="px-4 py-3 text-left font-bold">Obsidian status</th>
-                            <th className="px-4 py-3 text-left font-bold">Summary</th>
-                            <th className="px-4 py-3"></th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {displayOrder.length > 0 ? (
-                            displayOrder.map(({ meeting, index }) => (
-                                <MeetingRow
+                {dayGroups.length > 0 ? (
+                    dayGroups.map((group) => (
+                        <div key={group.key}>
+                            <div className="bg-muted/40 flex items-center justify-between border-b px-3 py-2">
+                                <span className="text-sm font-bold">{group.label}</span>
+                                <span className="text-muted-foreground text-xs">
+                                    {group.meetings.length} meeting{group.meetings.length === 1 ? "" : "s"}
+                                </span>
+                            </div>
+                            {group.meetings.map(({ meeting, index }) => (
+                                <AgendaMeetingRow
                                     key={meeting.meetingStartTimestamp}
                                     meeting={meeting}
                                     index={index}
@@ -118,16 +119,12 @@ export default function MeetingsSection() {
                                     onDeleted={handleDeleted}
                                     onChanged={loadMeetings}
                                 />
-                            ))
-                        ) : (
-                            <tr>
-                                <td colSpan={7} className="px-4 py-3">
-                                    Your next meeting will show up here
-                                </td>
-                            </tr>
-                        )}
-                    </tbody>
-                </table>
+                            ))}
+                        </div>
+                    ))
+                ) : (
+                    <p className="text-muted-foreground p-4 text-sm">Your next meeting will show up here.</p>
+                )}
             </div>
             {needsExpandButton ? (
                 <button
@@ -138,6 +135,6 @@ export default function MeetingsSection() {
                     Show all
                 </button>
             ) : null}
-        </section>
+        </div>
     )
 }

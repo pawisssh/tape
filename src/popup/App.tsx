@@ -1,53 +1,13 @@
 import { useEffect, useState } from "react"
+import { Card, CardContent } from "@/components/ui/card"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Label } from "@/components/ui/label"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { getSync, setSync } from "@/lib/chrome-storage"
-import { sendMessage } from "@/lib/messaging"
+import { usePlatformToggle } from "@/lib/use-platform-toggle"
 import iconUrl from "../../extension/icon.png"
 import googleDocsIcon from "../../extension/icons/google-docs.svg"
 import notionIcon from "../../extension/icons/notion.svg"
-
-type PlatformKey = "google_meet" | "teams" | "zoom"
-
-const PLATFORM_STORAGE_KEY: Record<PlatformKey, "wantGoogleMeet" | "wantTeams" | "wantZoom"> = {
-    google_meet: "wantGoogleMeet",
-    teams: "wantTeams",
-    zoom: "wantZoom",
-}
-
-function usePlatformToggle(platform: PlatformKey) {
-    const [checked, setChecked] = useState(false)
-    const [pending, setPending] = useState(true)
-
-    useEffect(() => {
-        let cancelled = false
-        sendMessage({ type: "get_platform_enablement_status", platform }).then((response) => {
-            if (cancelled) return
-            setPending(false)
-            if (response.success) {
-                setChecked(response.message === "Enabled")
-            }
-        })
-        return () => {
-            cancelled = true
-        }
-    }, [platform])
-
-    const toggle = (next: boolean) => {
-        setChecked(next)
-        setSync({ [PLATFORM_STORAGE_KEY[platform]]: next })
-        sendMessage({ type: next ? "enable_platform" : "disable_platform", platform }).then((response) => {
-            if (!response.success) {
-                // Revert on failure — matches upstream's popup.js behavior.
-                setChecked(!next)
-                console.error(`Failed to toggle ${platform}:`, response.message)
-            }
-        })
-    }
-
-    return { checked, pending, toggle }
-}
 
 export default function App() {
     const googleMeet = usePlatformToggle("google_meet")
@@ -84,18 +44,16 @@ export default function App() {
 
     return (
         <div className="w-[560px] p-6 text-sm">
-            <div className="mb-5 flex items-center justify-between">
+            <div className="mb-5 flex items-center gap-3">
+                <img className="size-10 rounded-lg" src={iconUrl} alt="" />
                 <div>
-                    <h1 className="text-2xl font-bold">TranscripTonic</h1>
-                    <p className="text-muted-foreground mt-1">
-                        Simple Google Meet transcripts. Private and open source.
-                    </p>
+                    <h1 className="text-lg font-bold">TranscripTonic</h1>
+                    <p className="text-muted-foreground">Simple Google Meet transcripts. Private and open source.</p>
                 </div>
-                <img className="h-12 w-12 rounded-full" src={iconUrl} alt="Extension icon" />
             </div>
 
-            <div className="bg-muted/40 mb-4 rounded-lg p-4">
-                <div className="mb-4 flex gap-8">
+            <Card className="mb-4">
+              <CardContent className="flex gap-8">
                     <div className="flex items-center gap-2">
                         <Checkbox
                             id="enable-google-meet"
@@ -129,10 +87,11 @@ export default function App() {
                             Zoom (beta)
                         </Label>
                     </div>
-                </div>
+              </CardContent>
 
-                <hr className="my-4" />
+              <hr />
 
+              <CardContent>
                 <RadioGroup value={operationMode} onValueChange={handleOperationModeChange} className="mb-4 gap-3">
                     <div className="flex items-start gap-2">
                         <RadioGroupItem value="auto" id="auto-mode" className="mt-0.5" />
@@ -164,9 +123,11 @@ export default function App() {
                         Hide captions on the meeting UI
                     </Label>
                 </div>
-            </div>
+              </CardContent>
+            </Card>
 
-            <div className="bg-muted/40 mb-4 flex items-center gap-4 rounded-lg p-4">
+            <Card className="mb-4">
+              <CardContent className="flex items-center gap-4">
                 <div className="flex items-center gap-1">
                     <img className="h-6 w-auto" src={googleDocsIcon} alt="Google Docs logo" />
                     <img className="h-6 w-auto" src={notionIcon} alt="Notion logo" />
@@ -177,12 +138,13 @@ export default function App() {
                     <button
                         type="button"
                         className="text-primary font-bold underline underline-offset-4"
-                        onClick={() => openMeetingsPage("webhooks")}
+                        onClick={() => openMeetingsPage("integrations")}
                     >
-                        webhooks &rarr;
+                        integrations &rarr;
                     </button>
                 </p>
-            </div>
+              </CardContent>
+            </Card>
 
             <div className="mb-4 flex items-center justify-between gap-6">
                 <button
@@ -190,7 +152,7 @@ export default function App() {
                     className="text-primary font-bold underline underline-offset-4"
                     onClick={() => openMeetingsPage()}
                 >
-                    Last 10 meetings &rarr;
+                    Open meetings &rarr;
                 </button>
                 <div>
                     <a

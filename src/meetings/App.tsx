@@ -1,4 +1,4 @@
-import { CalendarDays, Video, Plug, Settings as SettingsIcon } from "lucide-react"
+import { CalendarDays, Video, Plug, Cable, Settings as SettingsIcon } from "lucide-react"
 import {
     Sidebar,
     SidebarContent,
@@ -15,10 +15,12 @@ import {
 } from "@/components/ui/sidebar"
 import { Separator } from "@/components/ui/separator"
 import { TooltipProvider } from "@/components/ui/tooltip"
+import { Toaster } from "@/components/ui/toast"
 import { useActiveView, type ActiveView } from "./use-active-view"
 import MeetingsView from "./views/MeetingsView"
 import PlatformsView from "./views/PlatformsView"
 import IntegrationsView from "./views/IntegrationsView"
+import ConnectorsView from "./views/ConnectorsView"
 import SettingsView from "./views/SettingsView"
 import iconUrl from "../../extension/icon.png"
 
@@ -26,6 +28,7 @@ const NAV_ITEMS: { view: ActiveView; label: string; icon: typeof CalendarDays }[
     { view: "meetings", label: "Meetings", icon: CalendarDays },
     { view: "platforms", label: "Platforms", icon: Video },
     { view: "integrations", label: "Integrations", icon: Plug },
+    { view: "connectors", label: "Connectors", icon: Cable },
     { view: "settings", label: "Settings", icon: SettingsIcon },
 ]
 
@@ -33,6 +36,7 @@ const VIEW_COMPONENTS: Record<ActiveView, React.ComponentType> = {
     meetings: MeetingsView,
     platforms: PlatformsView,
     integrations: IntegrationsView,
+    connectors: ConnectorsView,
     settings: SettingsView,
 }
 
@@ -42,6 +46,7 @@ export default function App() {
 
     return (
         <TooltipProvider>
+            <Toaster />
             <SidebarProvider>
                 <Sidebar>
                     <SidebarHeader>

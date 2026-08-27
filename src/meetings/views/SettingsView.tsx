@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import LlmSection from "../LlmSection"
 
 export default function SettingsView() {
     const [version, setVersion] = useState("")
@@ -13,11 +12,7 @@ export default function SettingsView() {
         <div>
             <div className="mb-6">
                 <h1 className="text-2xl font-bold">Settings</h1>
-                <p className="text-muted-foreground mt-1 text-sm">AI configuration and app information.</p>
-            </div>
-
-            <div className="mb-4">
-                <LlmSection />
+                <p className="text-muted-foreground mt-1 text-sm">App information.</p>
             </div>
 
             <Card>

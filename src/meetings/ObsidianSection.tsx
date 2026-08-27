@@ -7,6 +7,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { getSync, setSync } from "@/lib/chrome-storage"
+import { toast } from "@/components/ui/toast"
 
 // Kept in sync with extension/obsidian/markdown.js's DEFAULT_FILENAME_TEMPLATE — this
 // component can't import that value directly without also pulling in the rest of
@@ -40,12 +41,16 @@ export default function ObsidianSection() {
             obsidianVaultName: vaultName.trim(),
             obsidianFolder: folder.trim(),
             obsidianFileNameTemplate: fileNameTemplate.trim() || DEFAULT_OBSIDIAN_FILENAME_TEMPLATE,
-        }).then(() => alert("Obsidian settings saved!"))
+        }).then(() => toast.add({ title: "Obsidian settings saved", type: "success" }))
     }
 
     function handleAutoSaveChange(checked: boolean) {
         if (checked && !vaultName.trim()) {
-            alert("Please enter and save a vault name before enabling auto-save.")
+            toast.add({
+                title: "Vault name required",
+                description: "Enter and save a vault name before enabling auto-save.",
+                type: "warning",
+            })
             return
         }
         setAutoSave(checked)
@@ -121,15 +126,15 @@ export default function ObsidianSection() {
                             </p>
                         </div>
 
-                        <div>
-                            <Button type="submit">Save</Button>
-                        </div>
-
                         <hr />
 
                         <div className="flex items-center gap-2">
                             <Checkbox id="auto-save-obsidian" checked={autoSave} onCheckedChange={(v) => handleAutoSaveChange(v === true)} />
                             <Label htmlFor="auto-save-obsidian">Automatically save transcript to Obsidian, after each meeting</Label>
+                        </div>
+
+                        <div>
+                            <Button type="submit">Save</Button>
                         </div>
                     </form>
                 </CardContent>

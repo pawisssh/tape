@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { getLocal, onStorageChanged, setLocal } from "@/lib/chrome-storage"
 import { asErrorObject, sendMessage } from "@/lib/messaging"
+import { toast } from "@/components/ui/toast"
 import AgendaMeetingRow from "../agenda/AgendaMeetingRow"
 import { groupMeetingsByDay } from "../agenda/group-by-day"
 
@@ -50,15 +51,21 @@ export default function MeetingsView() {
             loadMeetings()
             window.scrollTo({ top: 0, behavior: "smooth" })
             if (response.success) {
-                alert(response.message === "No recovery needed" ? "Nothing to recover—you're on top of the world!" : "Last meeting recovered successfully!")
+                toast.add({
+                    title:
+                        response.message === "No recovery needed"
+                            ? "Nothing to recover — you're on top of the world!"
+                            : "Last meeting recovered successfully",
+                    type: "success",
+                })
             } else {
                 const parsedError = asErrorObject(response.message)
                 if (parsedError?.errorCode === "013") {
-                    alert(parsedError.errorMessage)
+                    toast.add({ title: parsedError.errorMessage, type: "info" })
                 } else if (parsedError?.errorCode === "014") {
-                    alert("Nothing to recover—you're on top of the world!")
+                    toast.add({ title: "Nothing to recover — you're on top of the world!", type: "info" })
                 } else {
-                    alert("Could not recover last meeting!")
+                    toast.add({ title: "Could not recover last meeting", type: "error" })
                     console.error(parsedError?.errorMessage)
                 }
             }

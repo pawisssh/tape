@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { getSync, setSync } from "@/lib/chrome-storage"
 import { endpointOriginPattern, hasPermissions, requestPermissions } from "@/lib/permissions"
+import { toast } from "@/components/ui/toast"
 
 // Kept in sync with extension/obsidian/llm.js's DEFAULT_LLM_ENDPOINT/DEFAULT_LLM_MODEL/
 // DEFAULT_LLM_TIMEOUT_MS, for the same "single string constant, don't pull in the whole
@@ -67,7 +68,7 @@ export default function LlmSection() {
             obsidianLlmEndpoint: endpoint.trim() || DEFAULT_LLM_ENDPOINT,
             obsidianLlmModel: model.trim(),
             obsidianLlmTimeoutMs: Number.isFinite(parsedTimeout) && parsedTimeout > 0 ? parsedTimeout : DEFAULT_LLM_TIMEOUT_MS,
-        }).then(() => alert("LLM settings saved!"))
+        }).then(() => toast.add({ title: "LLM settings saved", type: "success" }))
     }
 
     // The permission request MUST happen directly inside this checkbox's own
@@ -84,7 +85,11 @@ export default function LlmSection() {
         const trimmedEndpoint = endpoint.trim() || DEFAULT_LLM_ENDPOINT
         const originPattern = endpointOriginPattern(trimmedEndpoint)
         if (!originPattern) {
-            alert("Please enter a valid endpoint URL before enabling LLM summaries.")
+            toast.add({
+                title: "Invalid endpoint URL",
+                description: "Enter a valid endpoint URL before enabling LLM summaries.",
+                type: "warning",
+            })
             return
         }
 
@@ -105,7 +110,11 @@ export default function LlmSection() {
                 setEnabled(false)
                 setSync({ obsidianUseLlm: false })
                 console.error("LLM endpoint permission error:", error)
-                alert("Could not request permission for that endpoint. Enable LLM summaries again once fixed.")
+                toast.add({
+                    title: "Could not enable LLM summaries",
+                    description: "Could not request permission for that endpoint. Try again once fixed.",
+                    type: "error",
+                })
             })
     }
 
@@ -182,10 +191,6 @@ export default function LlmSection() {
                             </p>
                         </div>
 
-                        <div>
-                            <Button type="submit">Save</Button>
-                        </div>
-
                         <hr />
 
                         <div>
@@ -204,6 +209,10 @@ export default function LlmSection() {
                                 "summarize" button; the cached summary for a past meeting is shown when you expand a
                                 meeting on the Meetings page once generated.
                             </p>
+                        </div>
+
+                        <div>
+                            <Button type="submit">Save</Button>
                         </div>
                     </form>
                 </CardContent>

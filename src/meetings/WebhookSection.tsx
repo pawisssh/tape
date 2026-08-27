@@ -10,6 +10,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { getSync, onStorageChanged, setSync } from "@/lib/chrome-storage"
 import { requestPermissions, webhookOriginPattern } from "@/lib/permissions"
+import { toast } from "@/components/ui/toast"
 import guideIcon from "../../extension/icons/guide.svg"
 
 const SIMPLE_BODY_EXAMPLE = `{
@@ -105,7 +106,7 @@ export default function WebhookSection() {
     function handleSubmit(e: React.FormEvent) {
         e.preventDefault()
         if (webhookUrl === "") {
-            setSync({ webhookUrl }).then(() => alert("Webhook URL saved!"))
+            setSync({ webhookUrl }).then(() => toast.add({ title: "Webhook URL saved", type: "success" }))
             return
         }
         requestWebhookAndNotificationPermission(webhookUrl)
@@ -113,9 +114,13 @@ export default function WebhookSection() {
                 if (!granted) throw new Error("Permission denied")
                 return setSync({ webhookUrl })
             })
-            .then(() => alert("Webhook URL saved!"))
+            .then(() => toast.add({ title: "Webhook URL saved", type: "success" }))
             .catch((error) => {
-                alert("Fine! No webhooks for you!")
+                toast.add({
+                    title: "Webhook URL not saved",
+                    description: "Permission to contact that URL was denied.",
+                    type: "error",
+                })
                 console.error("Webhook permission error:", error)
             })
     }
@@ -140,7 +145,7 @@ export default function WebhookSection() {
     }
 
     return (
-        <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-2">
+        <div>
             <Card>
                 <CardHeader>
                     <div className="flex items-center gap-2">
@@ -212,16 +217,12 @@ export default function WebhookSection() {
                             </Label>
                         </div>
                     </RadioGroup>
-                </CardContent>
-            </Card>
 
-            <Card>
-                <CardHeader>
-                    <CardTitle>Webhook help</CardTitle>
-                </CardHeader>
-                <CardContent>
-                    <p className="font-bold">Webhook integration guides</p>
-                    <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <hr className="my-6" />
+
+                    <p className="font-bold">Webhook help</p>
+                    <p className="text-muted-foreground mt-1 mb-3 text-sm">Integration guides</p>
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                         <a
                             className="border-primary/50 text-primary flex items-start gap-2 rounded-lg border p-2 font-bold"
                             href="https://github.com/vivek-nexus/transcriptonic/wiki/Google-Docs-integration-guide?utm_source=extension"

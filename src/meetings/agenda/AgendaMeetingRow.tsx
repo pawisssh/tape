@@ -10,6 +10,7 @@ import {
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
+import { toast } from "@/components/ui/toast"
 import {
     Dialog,
     DialogContent,
@@ -92,7 +93,7 @@ export default function AgendaMeetingRow({ meeting, index, onRenamed, onDeleted,
     function handleDownload() {
         sendMessage({ type: "download_transcript_at_index", index }).then((response) => {
             if (!response.success) {
-                alert("Could not download transcript")
+                toast.add({ title: "Could not download transcript", type: "error" })
                 const parsedError = asErrorObject(response.message)
                 if (parsedError) {
                     console.error(parsedError.errorMessage)
@@ -107,8 +108,9 @@ export default function AgendaMeetingRow({ meeting, index, onRenamed, onDeleted,
             setIsPostingWebhook(false)
             onChanged()
             if (response.success) {
-                alert("Posted successfully!")
+                toast.add({ title: "Webhook posted", type: "success" })
             } else {
+                toast.add({ title: "Could not post webhook", type: "error" })
                 const parsedError = asErrorObject(response.message)
                 if (parsedError) {
                     console.error(parsedError.errorMessage)
@@ -124,15 +126,21 @@ export default function AgendaMeetingRow({ meeting, index, onRenamed, onDeleted,
         sendMessage({ type: "save_meeting_to_obsidian", meetingId }).then((response) => {
             setIsSavingObsidian(false)
             onChanged()
-            if (!response.success) {
-                const parsedError = asErrorObject(response.message)
-                if (parsedError?.errorCode === "018") {
-                    alert("Please configure and save an Obsidian vault name first.")
-                } else {
-                    alert("Could not save to Obsidian")
-                    if (parsedError) {
-                        console.error(parsedError.errorMessage)
-                    }
+            if (response.success) {
+                toast.add({ title: "Saved to Obsidian", type: "success" })
+                return
+            }
+            const parsedError = asErrorObject(response.message)
+            if (parsedError?.errorCode === "018") {
+                toast.add({
+                    title: "Obsidian vault not configured",
+                    description: "Configure and save an Obsidian vault name first.",
+                    type: "warning",
+                })
+            } else {
+                toast.add({ title: "Could not save to Obsidian", type: "error" })
+                if (parsedError) {
+                    console.error(parsedError.errorMessage)
                 }
             }
         })

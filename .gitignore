@@ -1,6 +1,23 @@
-extension.zip
+*.zip
 /extension/_metadata
 .DS_Store
 node_modules/
 dist/
 *.tsbuildinfo
+
+# Secrets — never commit real values. Keep an .env.example checked in instead if the
+# project ever needs one.
+.env
+.env.*
+!.env.example
+
+# Editor/IDE-local config
+.vscode/
+.idea/
+
+# Claude Code's local, per-machine settings/permissions — not shared project config.
+.claude/settings.local.json
+
+# Logs
+*.log
+npm-debug.log*

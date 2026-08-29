@@ -1,22 +1,5 @@
 import { useEffect, useRef, useState } from "react"
 import { useDebouncedEffect } from "@/hooks/use-debounced-effect"
-import {
-    ChevronRight,
-    Plus,
-    Trash2,
-    AlignLeft,
-    List,
-    Calendar,
-    Hash,
-    CheckSquare,
-    Check,
-    Download,
-    Upload,
-    MoreHorizontal,
-    Copy,
-    Clipboard,
-} from "lucide-react"
-import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -31,6 +14,23 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { toast } from "@/components/ui/toast"
 import { cn } from "@/lib/utils"
 import { getSync } from "@/lib/chrome-storage"
+import CircleIconButton from "../ui/CircleIconButton"
+import {
+    KeyboardArrowRightIcon,
+    PlusIcon,
+    DeleteIcon,
+    NotesIcon,
+    ListIcon,
+    CalendarMonthIcon,
+    TagIcon,
+    CheckBoxIcon,
+    CheckIcon,
+    DownloadIcon,
+    UploadIcon,
+    MoreHorizIcon,
+    ContentCopyIcon,
+    ContentPasteIcon,
+} from "../ui/icons"
 // Framework-free logic module, imported directly rather than duplicated into src/ — see
 // PLAN.md §6 Phase 5 "Structural rule to preserve". DEFAULT_TEMPLATE is the starting
 // point handed to a newly-created template; getTemplates/saveTemplate/deleteTemplate are
@@ -49,12 +49,12 @@ import MobileBackButton from "../components/MobileBackButton"
 
 const PROPERTY_TYPES = TEMPLATE_PROPERTY_TYPES
 
-const TYPE_ICONS: Record<TemplatePropertyType, typeof AlignLeft> = {
-    text: AlignLeft,
-    multitext: List,
-    date: Calendar,
-    number: Hash,
-    checkbox: CheckSquare,
+const TYPE_ICONS: Record<TemplatePropertyType, typeof NotesIcon> = {
+    text: NotesIcon,
+    multitext: ListIcon,
+    date: CalendarMonthIcon,
+    number: TagIcon,
+    checkbox: CheckBoxIcon,
 }
 
 const TYPE_LABELS: Record<TemplatePropertyType, string> = {
@@ -303,20 +303,23 @@ export default function TemplatesView() {
     return (
         <>
         <MasterDetailLayout
+            className="meetings-redesign"
             contentTitle={
                 <>
-                    <h1 className="flex-1 text-xl font-bold">Templates</h1>
-                    <Button type="button" variant="outline" onClick={openImportDialog}>
-                        <Upload /> Import
-                    </Button>
-                    <Button type="button" onClick={handleAddTemplate}>
-                        <Plus /> Add template
-                    </Button>
+                    <h1 className="font-meetings-heading flex-1 text-xl text-black/87">templates</h1>
+                    <CircleIconButton label="Import template" icon={<UploadIcon />} onClick={openImportDialog} />
+                    <button
+                        type="button"
+                        onClick={handleAddTemplate}
+                        className="flex h-9 shrink-0 items-center gap-2 rounded-full bg-black/87 pr-4 pl-2 text-sm font-medium text-white shadow-[0px_16px_16px_rgba(12,12,13,0.1),0px_4px_2px_rgba(12,12,13,0.05)] transition-opacity hover:opacity-90"
+                    >
+                        <PlusIcon className="size-6" /> Add template
+                    </button>
                 </>
             }
             content={
                         <div className="flex flex-col">
-                            <p className="text-muted-foreground px-4 pt-4 pb-2 text-sm">
+                            <p className="px-4 pt-4 pb-2 text-sm text-black/60">
                                 Create a summary template per meeting type, auto-selected by matching keywords against
                                 the meeting title. Meetings that don't match any template use the built-in default
                                 template.
@@ -327,29 +330,25 @@ export default function TemplatesView() {
                                         key={template.id}
                                         type="button"
                                         className={cn(
-                                            "flex items-center justify-between gap-2 border-r-[3px] border-r-transparent py-3 pr-[13px] pl-4 text-left text-sm hover:bg-muted/50",
-                                            selectedId === template.id && "border-r-primary bg-muted",
+                                            "flex h-16 items-center justify-between gap-2 px-4 text-left text-sm font-medium text-black/87",
+                                            selectedId === template.id && "bg-black/8",
                                         )}
                                         onClick={() => {
                                             selectTemplate(template)
                                             setMobileDetailOpen(true)
                                         }}
                                     >
-                                        {template.name}
-                                        <ChevronRight className="text-muted-foreground size-4 shrink-0" />
+                                        <span className="min-w-0 flex-1 truncate">{template.name}</span>
+                                        <KeyboardArrowRightIcon className="size-4 shrink-0 text-black/38" />
                                     </button>
                                 ))
                             ) : (
-                                <div className="px-4">
-                                    <Card>
-                                        <CardContent>
-                                            <p className="text-muted-foreground text-sm">
-                                                No templates yet — every meeting uses the built-in default template.
-                                                Add a template to customize the notes for a specific kind of meeting
-                                                (e.g. standups, sales calls, 1:1s).
-                                            </p>
-                                        </CardContent>
-                                    </Card>
+                                <div className="mx-4 border border-black/12 p-4">
+                                    <p className="text-sm text-black/60">
+                                        No templates yet — every meeting uses the built-in default template.
+                                        Add a template to customize the notes for a specific kind of meeting
+                                        (e.g. standups, sales calls, 1:1s).
+                                    </p>
                                 </div>
                             )}
                         </div>
@@ -358,7 +357,7 @@ export default function TemplatesView() {
                 selectedId ? (
                     <>
                         <MobileBackButton onClick={() => setMobileDetailOpen(false)} />
-                        <h2 className="truncate text-xl font-bold">{name || "Untitled template"}</h2>
+                        <h2 className="font-meetings-heading truncate text-xl text-black/87">{name || "Untitled template"}</h2>
                     </>
                 ) : null
             }
@@ -369,7 +368,7 @@ export default function TemplatesView() {
                             <Label htmlFor="template-name">Name</Label>
                             <Input
                                 id="template-name"
-                                className="mt-2"
+                                className="mt-2 rounded-none"
                                 value={name}
                                 disabled={selectedId === "default"}
                                 onChange={(e) => setName(e.target.value)}
@@ -380,13 +379,13 @@ export default function TemplatesView() {
                             <Label htmlFor="template-keywords">Match when title contains</Label>
                             <Input
                                 id="template-keywords"
-                                className="mt-2"
+                                className="mt-2 rounded-none"
                                 placeholder="e.g. standup, daily sync"
                                 value={keywords}
                                 disabled={selectedId === "default"}
                                 onChange={(e) => setKeywords(e.target.value)}
                             />
-                            <p className="text-muted-foreground mt-1 text-xs">
+                            <p className="mt-1 text-xs text-black/60">
                                 {selectedId === "default"
                                     ? "\"Default\" always stays the fallback for meetings that don't match any other template, so its name and keywords are fixed — only its properties and note content are editable."
                                     : "Comma-separated, case-insensitive. Leave blank to use this template as the fallback for meetings that don't match any other template."}
@@ -395,9 +394,9 @@ export default function TemplatesView() {
 
                         <div>
                             <Label>Properties</Label>
-                            <p className="text-muted-foreground mt-1 text-xs">
+                            <p className="mt-1 text-xs text-black/60">
                                 Frontmatter fields added to the top of the note. Values can be plain text, a{" "}
-                                <code className="bg-foreground/10 rounded px-1">{"{{variable}}"}</code>, or a quoted
+                                <code className="bg-black/8 px-1">{"{{variable}}"}</code>, or a quoted
                                 AI instruction — see the reference below.
                             </p>
                             <div className="mt-1.5 flex flex-col gap-1">
@@ -412,6 +411,7 @@ export default function TemplatesView() {
                                                             type="button"
                                                             variant="ghost"
                                                             size="icon-sm"
+                                                            className="rounded-none"
                                                             aria-label={`Property type: ${TYPE_LABELS[property.type]}`}
                                                         >
                                                             <TypeIcon />
@@ -428,7 +428,7 @@ export default function TemplatesView() {
                                                             >
                                                                 <ItemIcon /> {TYPE_LABELS[t]}
                                                                 {property.type === t ? (
-                                                                    <Check className="ml-auto" />
+                                                                    <CheckIcon className="ml-auto size-4" />
                                                                 ) : null}
                                                             </DropdownMenuItem>
                                                         )
@@ -436,13 +436,13 @@ export default function TemplatesView() {
                                                 </DropdownMenuContent>
                                             </DropdownMenu>
                                             <Input
-                                                className="h-9 w-28 shrink-0"
+                                                className="h-9 w-28 shrink-0 rounded-none"
                                                 placeholder="name"
                                                 value={property.name}
                                                 onChange={(e) => updateProperty(index, { name: e.target.value })}
                                             />
                                             <Input
-                                                className="h-9 flex-1 font-mono text-xs"
+                                                className="h-9 flex-1 rounded-none font-mono text-xs"
                                                 placeholder="value"
                                                 value={property.value}
                                                 onChange={(e) => updateProperty(index, { value: e.target.value })}
@@ -451,17 +451,24 @@ export default function TemplatesView() {
                                                 type="button"
                                                 variant="ghost"
                                                 size="icon-sm"
+                                                className="rounded-none"
                                                 aria-label="Remove property"
                                                 onClick={() => removeProperty(index)}
                                             >
-                                                <Trash2 />
+                                                <DeleteIcon />
                                             </Button>
                                         </div>
                                     )
                                 })}
                             </div>
-                            <Button type="button" variant="outline" size="sm" className="mt-1.5" onClick={addProperty}>
-                                <Plus /> Add property
+                            <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                className="mt-1.5 rounded-none"
+                                onClick={addProperty}
+                            >
+                                <PlusIcon className="size-4" /> Add property
                             </Button>
                         </div>
 
@@ -469,23 +476,23 @@ export default function TemplatesView() {
                             <Label htmlFor="template-note-content">Note content</Label>
                             <Textarea
                                 id="template-note-content"
-                                className="mt-2 min-h-64 font-mono text-xs"
+                                className="mt-2 min-h-64 rounded-none font-mono text-xs"
                                 value={noteContent}
                                 onChange={(e) => setNoteContent(e.target.value)}
                             />
                         </div>
 
-                        <Card>
-                            <CardContent className="flex flex-col gap-2 text-xs">
-                                <p className="font-bold">Syntax reference</p>
-                                <p>
-                                    <code className="bg-foreground/10 rounded px-1">{"{{variable}}"}</code> substitutes
+                        <div className="border border-black/12 p-4">
+                            <div className="flex flex-col gap-2 text-xs">
+                                <p className="font-bold text-black/87">Syntax reference</p>
+                                <p className="text-black/87">
+                                    <code className="bg-black/8 px-1">{"{{variable}}"}</code> substitutes
                                     a meeting value directly.{" "}
-                                    <code className="bg-foreground/10 rounded px-1">{'{{"instruction"|filter}}'}</code>{" "}
+                                    <code className="bg-black/8 px-1">{'{{"instruction"|filter}}'}</code>{" "}
                                     sends the quoted instruction to the LLM (all instructions in a template are
                                     batched into one request) and applies the filter to its answer.
                                 </p>
-                                <p>
+                                <p className="text-black/87">
                                     <span className="font-bold">Variables:</span>{" "}
                                     {[
                                         "title",
@@ -502,57 +509,49 @@ export default function TemplatesView() {
                                         .map((v) => `{{${v}}}`)
                                         .join(", ")}
                                 </p>
-                                <p>
-                                    <code className="bg-foreground/10 rounded px-1">{"{{transcript}}"}</code>/
-                                    <code className="bg-foreground/10 rounded px-1">{"{{chatMessages}}"}</code> are the
+                                <p className="text-black/87">
+                                    <code className="bg-black/8 px-1">{"{{transcript}}"}</code>/
+                                    <code className="bg-black/8 px-1">{"{{chatMessages}}"}</code> are the
                                     body text only — give them their own heading, e.g.{" "}
-                                    <code className="bg-foreground/10 rounded px-1">{"## Transcript"}</code>. Using
+                                    <code className="bg-black/8 px-1">{"## Transcript"}</code>. Using
                                     either one replaces this app's automatic Transcript/Chat messages section at the
                                     end of the note, so it's never duplicated.
                                 </p>
-                                <p>
+                                <p className="text-black/87">
                                     <span className="font-bold">Filters:</span> list (
-                                    <code className="bg-foreground/10 rounded px-1">{'list:"checkbox"'}</code> for a
+                                    <code className="bg-black/8 px-1">{'list:"checkbox"'}</code> for a
                                     checklist), timestamped (validates and appends a{" "}
-                                    <code className="bg-foreground/10 rounded px-1">{"[M:SS]"}</code> citation copied
+                                    <code className="bg-black/8 px-1">{"[M:SS]"}</code> citation copied
                                     from the transcript — combine as{" "}
-                                    <code className="bg-foreground/10 rounded px-1">{"|list|timestamped"}</code>),
+                                    <code className="bg-black/8 px-1">{"|list|timestamped"}</code>),
                                     wikilink, kebab, lower, upper, trim,{" "}
-                                    <code className="bg-foreground/10 rounded px-1">{'date:"YYYY-MM-DD"'}</code>,{" "}
-                                    <code className="bg-foreground/10 rounded px-1">{'replace:("pattern":"replacement")'}</code>
-                                    , <code className="bg-foreground/10 rounded px-1">{"slice:0,3"}</code>,{" "}
-                                    <code className="bg-foreground/10 rounded px-1">{'join:", "'}</code>,{" "}
-                                    <code className="bg-foreground/10 rounded px-1">{'split:","'}</code>.
+                                    <code className="bg-black/8 px-1">{'date:"YYYY-MM-DD"'}</code>,{" "}
+                                    <code className="bg-black/8 px-1">{'replace:("pattern":"replacement")'}</code>
+                                    , <code className="bg-black/8 px-1">{"slice:0,3"}</code>,{" "}
+                                    <code className="bg-black/8 px-1">{'join:", "'}</code>,{" "}
+                                    <code className="bg-black/8 px-1">{'split:","'}</code>.
                                 </p>
-                                <p>
+                                <p className="text-black/87">
                                     A property typed <span className="font-bold">List</span> splits its resolved
                                     value on commas into separate frontmatter list items.
                                 </p>
-                            </CardContent>
-                        </Card>
+                            </div>
+                        </div>
 
                         <div className="flex items-center gap-2">
-                            <Button type="button" variant="outline" onClick={handleExport}>
-                                <Download /> Export
-                            </Button>
+                            <CircleIconButton label="Export" icon={<DownloadIcon />} onClick={handleExport} />
                             <DropdownMenu>
-                                <DropdownMenuTrigger
-                                    render={
-                                        <Button type="button" variant="outline" size="icon" aria-label="More actions">
-                                            <MoreHorizontal />
-                                        </Button>
-                                    }
-                                />
+                                <DropdownMenuTrigger render={<CircleIconButton label="More actions" icon={<MoreHorizIcon />} />} />
                                 <DropdownMenuContent align="start">
                                     <DropdownMenuItem onClick={handleDuplicate}>
-                                        <Copy /> Duplicate
+                                        <ContentCopyIcon className="size-4" /> Duplicate
                                     </DropdownMenuItem>
                                     <DropdownMenuItem onClick={handleCopyAsJson}>
-                                        <Clipboard /> Copy as JSON
+                                        <ContentPasteIcon className="size-4" /> Copy as JSON
                                     </DropdownMenuItem>
                                     {selectedId !== "default" ? (
                                         <DropdownMenuItem variant="destructive" onClick={handleDelete}>
-                                            <Trash2 /> Delete
+                                            <DeleteIcon className="size-4" /> Delete
                                         </DropdownMenuItem>
                                     ) : null}
                                 </DropdownMenuContent>
@@ -560,7 +559,7 @@ export default function TemplatesView() {
                         </div>
                     </div>
                 ) : (
-                    <p className="text-muted-foreground px-4 text-sm">Select a template to see its details.</p>
+                    <p className="px-4 text-sm text-black/60">Select a template to see its details.</p>
                 )
             }
             mobileDetailOpen={mobileDetailOpen}

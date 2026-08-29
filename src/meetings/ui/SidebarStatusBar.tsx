@@ -4,7 +4,7 @@ import { sendMessage } from "@/lib/messaging"
 import { isAnyExportConfigured } from "@/lib/export-status"
 import { cn } from "@/lib/utils"
 import { useLiveCaptureState } from "../use-live-capture-state"
-import { PlayArrowFillIcon, CheckCircleFillIcon, RadioButtonCheckedIcon } from "./icons"
+import { PlayArrowFillIcon, CheckCircleFillIcon, CircleFillIcon } from "./icons"
 
 const PLATFORMS: { platform: Platform; label: string }[] = [
     { platform: "google_meet", label: "G" },
@@ -12,13 +12,21 @@ const PLATFORMS: { platform: Platform; label: string }[] = [
     { platform: "zoom", label: "Z" },
 ]
 
+interface SidebarStatusBarProps {
+    // Whether the main "Auto-capture meetings" toggle (App.tsx's SidebarHeader switch) is
+    // on — drives the record-dot's color below: red/armed when on, dim when off. Owned by
+    // App.tsx (backed by the "autoCaptureEnabled" sync setting), not re-read here, so
+    // there's exactly one source of truth for it.
+    autoCaptureEnabled: boolean
+}
+
 // The sidebar's black "recording bar": a live capture indicator (record-dot, real —
 // see use-live-capture-state.ts) plus a status dashboard (APPS/AI/STORAGE, all backed
 // by existing settings — no new storage keys except what the caller already tracks).
 // The play icon is rendered per the design but deliberately non-functional this pass —
 // wiring a remote manual-capture-start into extension/content-scripts/* is separate,
 // higher-risk scope (see the plan doc).
-export default function SidebarStatusBar() {
+export default function SidebarStatusBar({ autoCaptureEnabled }: SidebarStatusBarProps) {
     const { isCapturing, isProcessing } = useLiveCaptureState()
     const [platformEnabled, setPlatformEnabled] = useState<Partial<Record<Platform, boolean>>>({})
     const [activeModelId, setActiveModelId] = useState<string | null>(null)
@@ -78,11 +86,19 @@ export default function SidebarStatusBar() {
     return (
         <div className="flex flex-col bg-black">
             <div className="flex h-16 items-center px-4">
-                <RadioButtonCheckedIcon
-                    aria-label={isCapturing ? "Capturing a meeting" : isProcessing ? "Processing…" : "Not capturing"}
-                    className={cn("size-6 shrink-0", isCapturing || isProcessing ? "text-meetings-accent" : "text-white/38")}
+                <CircleFillIcon
+                    aria-label={
+                        !autoCaptureEnabled
+                            ? "Auto-capture is off"
+                            : isCapturing
+                                ? "Capturing a meeting"
+                                : isProcessing
+                                    ? "Processing…"
+                                    : "Auto-capture is on"
+                    }
+                    className={cn("size-4 shrink-0", autoCaptureEnabled ? "text-meetings-accent" : "text-white/38")}
                 />
-                <PlayArrowFillIcon className="size-6 text-white/38" />
+                <PlayArrowFillIcon className="size-6 shrink-0 text-white/38" />
             </div>
             <div className="flex h-16 items-center">
                 <div className="flex flex-1 flex-col justify-center gap-1 px-4">
@@ -116,7 +132,11 @@ export default function SidebarStatusBar() {
                 </div>
                 <div className="flex flex-1 flex-col justify-center gap-1 px-4">
                     <span className="font-meetings-mono text-[10px] tracking-wide text-white/38 uppercase">Storage</span>
-                    <CheckCircleFillIcon className={cn("size-5", exportConfigured ? "text-white" : "text-white/38")} />
+                    {exportConfigured ? (
+                        <CheckCircleFillIcon className="size-5 text-white" />
+                    ) : (
+                        <span className="font-meetings-heading text-[10px] text-white/38">NOT SET</span>
+                    )}
                 </div>
             </div>
         </div>

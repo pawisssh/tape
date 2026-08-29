@@ -103,7 +103,7 @@ export default function App() {
                         </div>
                     </SidebarHeader>
                     <div className="group-data-[collapsible=icon]:hidden">
-                        <SidebarStatusBar />
+                        <SidebarStatusBar autoCaptureEnabled={autoCaptureEnabled} />
                     </div>
                     <SidebarContent>
                         <SidebarGroup className="p-0">

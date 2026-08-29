@@ -1,6 +1,6 @@
 // Best-effort fetch of the models available on an OpenAI-compatible server — local (LM
 // Studio, Ollama) or cloud (OpenAI and most other OpenAI-compatible providers) — all
-// expose GET {baseUrl}/models in this shape. Used to populate the Connectors page's
+// expose GET {baseUrl}/models in this shape. Used to populate the Integrations page's
 // model list. Returns `null` on any failure whatsoever (unreachable server, missing host
 // permission, timeout, malformed response, empty list) — callers should treat that as
 // "this provider currently has no models to show," never as a hard error.

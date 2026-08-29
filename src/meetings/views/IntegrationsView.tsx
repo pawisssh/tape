@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react"
-import { ChevronRight, Server, Webhook as WebhookIcon } from "lucide-react"
 import { Switch } from "@/components/ui/switch"
 import { getSync, setSync, onStorageChanged } from "@/lib/chrome-storage"
 import { endpointOriginPattern, requestPermissions } from "@/lib/permissions"
@@ -12,6 +11,7 @@ import WebhookSection from "../WebhookSection"
 import ProviderPanel from "../connectors/ProviderPanel"
 import AiModelRows from "../connectors/AiModelRows"
 import { GoogleMeetIcon, TeamsIcon, ZoomIcon, ObsidianIcon } from "../connectors/brand-icons"
+import { KeyboardArrowRightIcon, DnsIcon, WebhookIcon } from "../ui/icons"
 import { usePlatformToggle } from "@/lib/use-platform-toggle"
 // Framework-free logic module, imported directly rather than duplicated into src/ — see
 // PLAN.md §6 Phase 5 "Structural rule to preserve". getProviders/getActiveModel/
@@ -25,21 +25,22 @@ const AI_SLOT = {
     id: "ai" as const,
     name: "Local/Custom endpoints",
     description: "Run models locally with LM Studio or Ollama, or point at any other OpenAI-compatible endpoint",
-    icon: Server,
+    icon: DnsIcon,
     allowedTypes: ["lmstudio", "ollama", "custom"] as ObsidianLlmProviderType[],
 }
 
-// Matches the day-group headers on the Meetings page (see MeetingsView.tsx) — same
-// bg-muted/40 row, same text-sm font-bold label, for visual consistency between the two
-// pages' list-section headers.
+// Small-caps system-label treatment used everywhere on the Meetings page (sidebar stat
+// labels, tab-adjacent labels) — see e.g. SidebarStatusBar.tsx's "Apps"/"AI"/"Storage".
 function GroupLabel({ children }: { children: React.ReactNode }) {
     return (
-        <div className="bg-muted/40 flex items-center px-4 py-1.5">
-            <span className="text-sm font-bold">{children}</span>
+        <div className="px-4 pt-4 pb-1">
+            <span className="font-meetings-mono text-[10px] tracking-wide text-black/38 uppercase">{children}</span>
         </div>
     )
 }
 
+// Matches MeetingListRow.tsx exactly — h-16 row, bg-black/8 selected state, no more
+// left/right accent border.
 function ListRow({
     icon: Icon,
     name,
@@ -57,15 +58,12 @@ function ListRow({
         <button
             type="button"
             onClick={onClick}
-            className={cn(
-                "flex w-full items-center gap-3 border-r-[3px] border-r-transparent py-3 pr-[13px] pl-4 text-left text-sm hover:bg-muted/50",
-                selected && "border-r-primary bg-muted",
-            )}
+            className={cn("flex h-16 w-full items-center gap-3 px-4 text-left", selected && "bg-black/8")}
         >
-            <Icon className="size-5 shrink-0" />
-            <span className="min-w-0 flex-1 truncate">{name}</span>
-            {status ? <span className="text-muted-foreground shrink-0 text-xs">{status}</span> : null}
-            <ChevronRight className="text-muted-foreground size-4 shrink-0" />
+            <Icon className="size-5 shrink-0 text-black/60" />
+            <span className="min-w-0 flex-1 truncate text-sm font-medium text-black/87">{name}</span>
+            {status ? <span className="shrink-0 text-xs text-black/60">{status}</span> : null}
+            <KeyboardArrowRightIcon className="size-4 shrink-0 text-black/38" />
         </button>
     )
 }
@@ -164,34 +162,35 @@ export default function IntegrationsView() {
 
     return (
         <MasterDetailLayout
-            contentTitle={<h1 className="text-xl font-bold">Integrations</h1>}
+            className="meetings-redesign"
+            contentTitle={<h1 className="font-meetings-heading flex-1 text-xl text-black/87">integrations</h1>}
             content={
                     <div className="flex flex-col">
-                        <p className="text-muted-foreground px-4 pt-4 pb-2 text-sm">
+                        <p className="px-4 pt-4 pb-2 text-sm text-black/60">
                             Connect TranscripTonic to the tools you already use.
                         </p>
                         <GroupLabel>Platforms</GroupLabel>
-                        <div className="flex items-center gap-3 border-r-[3px] border-r-transparent py-3 pr-[13px] pl-4">
+                        <div className="flex h-16 items-center gap-3 px-4">
                             <GoogleMeetIcon className="size-5 shrink-0" />
-                            <span className="min-w-0 flex-1 truncate text-sm">Google Meet</span>
+                            <span className="min-w-0 flex-1 truncate text-sm font-medium text-black/87">Google Meet</span>
                             <Switch
                                 checked={googleMeet.checked}
                                 disabled={googleMeet.pending}
                                 onCheckedChange={googleMeet.toggle}
                             />
                         </div>
-                        <div className="flex items-center gap-3 border-r-[3px] border-r-transparent py-3 pr-[13px] pl-4">
+                        <div className="flex h-16 items-center gap-3 px-4">
                             <TeamsIcon className="size-5 shrink-0" />
-                            <span className="min-w-0 flex-1 truncate text-sm">Teams</span>
+                            <span className="min-w-0 flex-1 truncate text-sm font-medium text-black/87">Teams</span>
                             <Switch checked={teams.checked} disabled={teams.pending} onCheckedChange={teams.toggle} />
                         </div>
-                        <div className="flex items-center gap-3 border-r-[3px] border-r-transparent py-3 pr-[13px] pl-4">
+                        <div className="flex h-16 items-center gap-3 px-4">
                             <ZoomIcon className="size-5 shrink-0" />
-                            <span className="min-w-0 flex-1 truncate text-sm">Zoom</span>
+                            <span className="min-w-0 flex-1 truncate text-sm font-medium text-black/87">Zoom</span>
                             <Switch checked={zoom.checked} disabled={zoom.pending} onCheckedChange={zoom.toggle} />
                         </div>
 
-                        <GroupLabel>Connectors</GroupLabel>
+                        <GroupLabel>Storage</GroupLabel>
                         <ListRow
                             icon={ObsidianIcon}
                             name="Obsidian"
@@ -226,34 +225,34 @@ export default function IntegrationsView() {
                 selectedId === "obsidian" ? (
                     <>
                         <MobileBackButton onClick={() => setMobileDetailOpen(false)} />
-                        <h2 className="text-xl font-bold">Obsidian</h2>
+                        <h2 className="font-meetings-heading text-xl text-black/87">Obsidian</h2>
                     </>
                 ) : selectedId === "webhook" ? (
                     <>
                         <MobileBackButton onClick={() => setMobileDetailOpen(false)} />
-                        <h2 className="text-xl font-bold">Webhook</h2>
+                        <h2 className="font-meetings-heading text-xl text-black/87">Webhook</h2>
                     </>
                 ) : selectedId === "ai" ? (
                     <>
                         <MobileBackButton onClick={() => setMobileDetailOpen(false)} />
-                        <h2 className="text-xl font-bold">{AI_SLOT.name}</h2>
+                        <h2 className="font-meetings-heading text-xl text-black/87">{AI_SLOT.name}</h2>
                     </>
                 ) : null
             }
             detail={
                 selectedId === "obsidian" ? (
                     <div className="px-4">
-                        <p className="text-muted-foreground pt-4 pb-2 text-sm">Hand transcripts off as a new note in your vault.</p>
+                        <p className="pt-4 pb-2 text-sm text-black/60">Hand transcripts off as a new note in your vault.</p>
                         <ObsidianSection />
                     </div>
                 ) : selectedId === "webhook" ? (
                     <div className="px-4">
-                        <p className="text-muted-foreground pt-4 pb-2 text-sm">Post transcripts to any tool that accepts webhooks.</p>
+                        <p className="pt-4 pb-2 text-sm text-black/60">Post transcripts to any tool that accepts webhooks.</p>
                         <WebhookSection />
                     </div>
                 ) : selectedId === "ai" ? (
                     <div className="px-4">
-                        <p className="text-muted-foreground pt-4 pb-2 text-sm">{AI_SLOT.description}</p>
+                        <p className="pt-4 pb-2 text-sm text-black/60">{AI_SLOT.description}</p>
                         <ProviderPanel
                             key={AI_SLOT.id}
                             provider={aiProvider}
@@ -263,7 +262,7 @@ export default function IntegrationsView() {
                         />
                     </div>
                 ) : (
-                    <p className="text-muted-foreground px-4 text-sm">Select a connector to configure it.</p>
+                    <p className="px-4 text-sm text-black/60">Select a connector to configure it.</p>
                 )
             }
             mobileDetailOpen={mobileDetailOpen}

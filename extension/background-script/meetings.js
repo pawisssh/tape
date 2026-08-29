@@ -210,7 +210,7 @@ export function summarizeMeetingNow(meetingId) {
             return { success: false, message: "Meeting not found." }
         }
         if (!settings.obsidianUseLlm) {
-            return { success: false, message: "Local LLM summary enrichment is off — enable it in Connectors first." }
+            return { success: false, message: "Local LLM summary enrichment is off — enable it on the Integrations page first." }
         }
 
         return enrichWithLlm(meeting, settings).then((result) => {

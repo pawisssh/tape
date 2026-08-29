@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react"
-import { Link2 } from "lucide-react"
+import { LinkIcon } from "./ui/icons"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
@@ -171,7 +171,7 @@ export default function WebhookSection() {
                     <Input
                         type="url"
                         id="webhook-url"
-                        className="rounded-r-none"
+                        className="rounded-none"
                         placeholder="https://your-webhook-url.com"
                         value={webhookUrl}
                         onChange={(e) => setWebhookUrl(e.target.value)}
@@ -179,11 +179,11 @@ export default function WebhookSection() {
                     <Button
                         type="button"
                         variant="outline"
-                        className="rounded-l-none"
+                        className="rounded-none"
                         disabled={isConnecting || !webhookUrl.trim()}
                         onClick={handleConnect}
                     >
-                        <Link2 /> {isConnecting ? "Connecting…" : "Connect"}
+                        <LinkIcon className="size-4" /> {isConnecting ? "Connecting…" : "Connect"}
                     </Button>
                 </div>
             </div>
@@ -213,26 +213,26 @@ export default function WebhookSection() {
                 <div className="flex items-start gap-2">
                     <RadioGroupItem value="simple" id="simple-webhook-body" className="mt-0.5" />
                     <Label htmlFor="simple-webhook-body" className="flex-col items-start font-normal">
-                        <span className="font-bold">Simple webhook body</span>
-                        <span className="text-muted-foreground">Pre-formatted data, suitable for no-code integrations</span>
+                        <span className="font-bold text-black/87">Simple webhook body</span>
+                        <span className="text-black/60">Pre-formatted data, suitable for no-code integrations</span>
                     </Label>
                 </div>
                 <div className="flex items-start gap-2">
                     <RadioGroupItem value="advanced" id="advanced-webhook-body" className="mt-0.5" />
                     <Label htmlFor="advanced-webhook-body" className="flex-col items-start font-normal">
-                        <span className="font-bold">Advanced webhook body</span>
-                        <span className="text-muted-foreground">Raw data, suitable for code integrations</span>
+                        <span className="font-bold text-black/87">Advanced webhook body</span>
+                        <span className="text-black/60">Raw data, suitable for code integrations</span>
                     </Label>
                 </div>
             </RadioGroup>
 
             <Separator className="my-4" />
 
-            <p className="font-bold">Webhook help</p>
-            <p className="text-muted-foreground mt-1 mb-3 text-sm">Integration guides</p>
+            <p className="font-bold text-black/87">Webhook help</p>
+            <p className="mt-1 mb-3 text-sm text-black/60">Integration guides</p>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <a
-                    className="border-primary/50 text-primary flex items-start gap-2 rounded-lg border p-2 font-bold"
+                    className="flex items-start gap-2 border border-meetings-accent p-2 font-bold text-black/87"
                     href="https://github.com/vivek-nexus/transcriptonic/wiki/Google-Docs-integration-guide?utm_source=extension"
                     target="_blank"
                     rel="noreferrer"
@@ -241,7 +241,7 @@ export default function WebhookSection() {
                     <span>Get transcripts on Google Docs</span>
                 </a>
                 <a
-                    className="border-primary/50 text-primary flex items-start gap-2 rounded-lg border p-2 font-bold"
+                    className="flex items-start gap-2 border border-meetings-accent p-2 font-bold text-black/87"
                     href="https://github.com/vivek-nexus/transcriptonic/wiki/n8n-integration-guide?utm_source=extension"
                     target="_blank"
                     rel="noreferrer"
@@ -251,20 +251,20 @@ export default function WebhookSection() {
                 </a>
             </div>
             <Separator className="my-4" />
-            <p className="font-bold">Webhook JSON body</p>
+            <p className="font-bold text-black/87">Webhook JSON body</p>
             <div>
                 <Collapsible>
-                    <CollapsibleTrigger className="text-primary font-bold">Webhook body (simple)</CollapsibleTrigger>
+                    <CollapsibleTrigger className="font-bold text-black/87">Webhook body (simple)</CollapsibleTrigger>
                     <CollapsibleContent>
-                        <pre className="bg-foreground/5 my-4 overflow-x-auto rounded-lg p-4 text-xs leading-relaxed">
+                        <pre className="my-4 overflow-x-auto border border-black/12 bg-black/5 p-4 text-xs leading-relaxed">
                             {SIMPLE_BODY_EXAMPLE}
                         </pre>
                     </CollapsibleContent>
                 </Collapsible>
                 <Collapsible>
-                    <CollapsibleTrigger className="text-primary font-bold">Webhook body (advanced)</CollapsibleTrigger>
+                    <CollapsibleTrigger className="font-bold text-black/87">Webhook body (advanced)</CollapsibleTrigger>
                     <CollapsibleContent>
-                        <pre className="bg-foreground/5 my-4 overflow-x-auto rounded-lg p-4 text-xs leading-relaxed">
+                        <pre className="my-4 overflow-x-auto border border-black/12 bg-black/5 p-4 text-xs leading-relaxed">
                             {ADVANCED_BODY_EXAMPLE}
                         </pre>
                     </CollapsibleContent>

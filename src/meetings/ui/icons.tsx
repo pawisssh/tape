@@ -7,8 +7,9 @@ import * as React from "react"
 // data for these exact icon names/fill variants) rather than a font-icon approach, so
 // each glyph tints via `currentColor`/Tailwind text-color classes like any other inline
 // SVG in this codebase — bundling the ~4MB full variable icon font just for a dozen
-// glyphs isn't worth it. Scoped to the Meetings-page redesign only; other pages keep
-// lucide-react until their own redesign pass.
+// glyphs isn't worth it. Originally scoped to the Meetings page only; now shared by every
+// page's redesign (Integrations/Templates/Settings), since they all draw from this same
+// icon set instead of lucide-react.
 
 type IconProps = React.SVGProps<SVGSVGElement>
 
@@ -60,6 +61,11 @@ export const CircleIcon = makeIcon(
     "CircleIcon",
 )
 
+export const CircleFillIcon = makeIcon(
+    "M480-80q-82 0-155-31.5t-127.5-86Q143-252 111.5-325T80-480q0-83 31.5-156t86-127Q252-817 325-848.5T480-880q83 0 156 31.5T763-763q54 54 85.5 127T880-480q0 82-31.5 155T763-197.5q-54 54.5-127 86T480-80Z",
+    "CircleFillIcon",
+)
+
 export const KeyboardArrowDownIcon = makeIcon(
     "M480-344 240-584l43-43 197 197 197-197 43 43-240 240Z",
     "KeyboardArrowDownIcon",
@@ -73,11 +79,6 @@ export const KeyboardArrowRightIcon = makeIcon(
 export const PlayArrowFillIcon = makeIcon("M320-203v-560l440 280-440 280Z", "PlayArrowFillIcon")
 
 export const StopFillIcon = makeIcon("M240-240v-480h480v480H240Z", "StopFillIcon")
-
-export const RadioButtonCheckedIcon = makeIcon(
-    "M612-348q54-54 54-132t-54-132q-54-54-132-54t-132 54q-54 54-54 132t54 132q54 54 132 54t132-54ZM480-80q-82 0-155-31.5t-127.5-86Q143-252 111.5-325T80-480q0-83 31.5-156t86-127Q252-817 325-848.5T480-880q83 0 156 31.5T763-763q54 54 85.5 127T880-480q0 82-31.5 155T763-197.5q-54 54.5-127 86T480-80Zm0-60q142 0 241-99.5T820-480q0-142-99-241t-241-99q-141 0-240.5 99T140-480q0 141 99.5 240.5T480-140Z",
-    "RadioButtonCheckedIcon",
-)
 
 export const WebhookIcon = makeIcon(
     "M270-120q-78 0-134-56T80-310q0-67 39-117t101-66v63q-35 14-57.5 46.5T140-310q0 54 38 92t92 38q54 0 92-38t38-92v-30h249q8-9 19-14.5t22-5.5q21 0 35.5 14.5T740-310q0 20-14.5 35T690-260q-11 0-22-5.5T649-280H458q-14 69-66.5 114.5T270-120Zm420 0q-48 0-88.5-22T535-200h86q15 10 32.5 15t36.5 5q54 0 92-38t38-92q0-54-38-92t-92-38q-19 0-35 4.5T624-422L495-640q-20-4-32.5-17.5T450-690q0-21 15-35.5t35-14.5q21 0 35.5 14.5T550-690q0 4-.5 7.5T547-672l103 176q11-2 21.5-3t18.5-1q79 0 134.5 55.5T880-310q0 78-55.5 134T690-120ZM270-260q-20 0-35-15t-15-35q0-18 12.5-31.5T264-360l111-187q-30-29-47.5-65.5T310-690q0-79 56-134.5T500-880q76 0 131 52.5T690-700h-60q-3-51-40.5-85.5T500-820q-54 0-92 38t-38 92q0 42 24.5 75.5T457-567L316-329q2 6 3 10.5t1 8.5q0 20-14.5 35T270-260Z",
@@ -107,4 +108,43 @@ export const CableIcon = makeIcon(
 export const DescriptionIcon = makeIcon(
     "M319-250h322v-60H319v60Zm0-170h322v-60H319v60ZM220-80q-24 0-42-18t-18-42v-680q0-24 18-42t42-18h361l219 219v521q0 24-18 42t-42 18H220Zm331-554v-186H220v680h520v-494H551ZM220-820v186-186 680-680Z",
     "DescriptionIcon",
+)
+
+export const PlusIcon = makeIcon("M450-450H200v-60h250v-250h60v250h250v60H510v250h-60v-250Z", "PlusIcon")
+
+export const CheckIcon = makeIcon("M378-246 154-470l43-43 181 181 384-384 43 43-427 427Z", "CheckIcon")
+
+export const LinkIcon = makeIcon(
+    "M450-280H280q-83 0-141.5-58.5T80-480q0-83 58.5-141.5T280-680h170v60H280q-58.33 0-99.17 40.76-40.83 40.77-40.83 99Q140-422 180.83-381q40.84 41 99.17 41h170v60ZM325-450v-60h310v60H325Zm185 170v-60h170q58.33 0 99.17-40.76 40.83-40.77 40.83-99Q820-538 779.17-579q-40.84-41-99.17-41H510v-60h170q83 0 141.5 58.5T880-480q0 83-58.5 141.5T680-280H510Z",
+    "LinkIcon",
+)
+
+export const NotesIcon = makeIcon(
+    "M120-240v-60h480v60H120Zm0-210v-60h720v60H120Zm0-210v-60h720v60H120Z",
+    "NotesIcon",
+)
+
+export const ListIcon = makeIcon(
+    "M290-620v-60h550v60H290Zm0 170v-60h550v60H290Zm0 170v-60h550v60H290ZM150-620q-12 0-21-9t-9-21.5q0-12.5 9-21t21.5-8.5q12.5 0 21 8.62 8.5 8.63 8.5 21.38 0 12-8.62 21-8.63 9-21.38 9Zm0 170q-12 0-21-9t-9-21.5q0-12.5 9-21t21.5-8.5q12.5 0 21 8.62 8.5 8.63 8.5 21.38 0 12-8.62 21-8.63 9-21.38 9Zm0 170q-12 0-21-9t-9-21.5q0-12.5 9-21t21.5-8.5q12.5 0 21 8.62 8.5 8.63 8.5 21.38 0 12-8.62 21-8.63 9-21.38 9Z",
+    "ListIcon",
+)
+
+export const TagIcon = makeIcon(
+    "m239-160 40-159H120l15-60h159l51-202H186l15-60h159l39-159h59l-39 159h203l39-159h59l-39 159h159l-15 60H666l-51 202h159l-15 60H600l-40 159h-59l40-159H338l-40 159h-59Zm114-219h203l51-202H404l-51 202Z",
+    "TagIcon",
+)
+
+export const CheckBoxIcon = makeIcon(
+    "m419-321 289-289-43-43-246 246-119-119-43 43 162 162ZM180-120q-24 0-42-18t-18-42v-600q0-24 18-42t42-18h600q24 0 42 18t18 42v600q0 24-18 42t-42 18H180Zm0-60h600v-600H180v600Zm0-600v600-600Z",
+    "CheckBoxIcon",
+)
+
+export const DnsIcon = makeIcon(
+    "M286.88-717q-20.88 0-35.38 14.62-14.5 14.62-14.5 35.5 0 20.88 14.62 35.38 14.62 14.5 35.5 14.5 20.88 0 35.38-14.62 14.5-14.62 14.5-35.5 0-20.88-14.62-35.38-14.62-14.5-35.5-14.5Zm0 414q-20.88 0-35.38 14.62-14.5 14.62-14.5 35.5 0 20.88 14.62 35.38 14.62 14.5 35.5 14.5 20.88 0 35.38-14.62 14.5-14.62 14.5-35.5 0-20.88-14.62-35.38-14.62-14.5-35.5-14.5ZM154-839h651q16 0 25.5 9.5t9.5 25.81V-535q0 17.42-9.5 29.21T805-494H154q-15 0-24.5-11.79T120-535v-268.69q0-16.31 9.5-25.81T154-839Zm26 60v225h600v-225H180Zm-26 353h647q15 0 27 12.5t12 28.53V-121q0 20-12 30.5T801-80H159q-16 0-27.5-10.5T120-121v-263.97q0-16.03 9.5-28.53T154-426Zm26 60v226h600v-226H180Zm0-413v225-225Zm0 413v226-226Z",
+    "DnsIcon",
+)
+
+export const ContentPasteIcon = makeIcon(
+    "M180-120q-26 0-43-17t-17-43v-600q0-26 17-43t43-17h202q7-35 34.5-57.5T480-920q36 0 63.5 22.5T578-840h202q26 0 43 17t17 43v600q0 26-17 43t-43 17H180Zm0-60h600v-600h-60v90H240v-90h-60v600Zm328.5-611.5Q520-803 520-820t-11.5-28.5Q497-860 480-860t-28.5 11.5Q440-837 440-820t11.5 28.5Q463-780 480-780t28.5-11.5Z",
+    "ContentPasteIcon",
 )

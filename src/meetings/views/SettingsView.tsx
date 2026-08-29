@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react"
-import { ChevronRight } from "lucide-react"
+import { KeyboardArrowRightIcon } from "../ui/icons"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Label } from "@/components/ui/label"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
@@ -111,17 +111,18 @@ export default function SettingsView() {
 
     return (
         <MasterDetailLayout
-            contentTitle={<h1 className="text-xl font-bold">Settings</h1>}
+            className="meetings-redesign"
+            contentTitle={<h1 className="font-meetings-heading flex-1 text-xl text-black/87">settings</h1>}
             content={
                 <div className="flex flex-col">
-                    <p className="text-muted-foreground px-4 pt-4 pb-2 text-sm">Capture behavior and app information.</p>
+                    <p className="px-4 pt-4 pb-2 text-sm text-black/60">Capture behavior and app information.</p>
                     {CATEGORIES.map((category) => (
                         <button
                             key={category.id}
                             type="button"
                             className={cn(
-                                "flex items-center justify-between gap-2 border-r-[3px] border-r-transparent py-3 pr-[13px] pl-4 text-left text-sm hover:bg-muted/50",
-                                activeCategory === category.id && "border-r-primary bg-muted",
+                                "flex h-16 items-center justify-between gap-2 px-4 text-left text-sm font-medium text-black/87",
+                                activeCategory === category.id && "bg-black/8",
                             )}
                             onClick={() => {
                                 setActiveCategory(category.id)
@@ -129,7 +130,7 @@ export default function SettingsView() {
                             }}
                         >
                             {category.label}
-                            <ChevronRight className="text-muted-foreground size-4 shrink-0" />
+                            <KeyboardArrowRightIcon className="size-4 shrink-0 text-black/38" />
                         </button>
                     ))}
                 </div>
@@ -137,27 +138,27 @@ export default function SettingsView() {
             detailTitle={
                 <>
                     <MobileBackButton onClick={() => setMobileDetailOpen(false)} />
-                    <h2 className="text-xl font-bold">{activeCategoryInfo.label}</h2>
+                    <h2 className="font-meetings-heading text-xl text-black/87">{activeCategoryInfo.label}</h2>
                 </>
             }
             detail={
                 <div className="px-4">
-                    <p className="text-muted-foreground pt-4 pb-2 text-sm">{activeCategoryInfo.description}</p>
+                    <p className="pt-4 pb-2 text-sm text-black/60">{activeCategoryInfo.description}</p>
                     {activeCategory === "capture" ? (
                         <div>
                             <RadioGroup value={operationMode} onValueChange={handleOperationModeChange} className="gap-3">
                                 <div className="flex items-start gap-2">
                                     <RadioGroupItem value="auto" id="auto-mode" className="mt-0.5" />
                                     <Label htmlFor="auto-mode" className="flex-col items-start font-normal">
-                                        <span className="font-bold">Auto mode</span>
-                                        <span className="text-muted-foreground">Get transcripts of all meetings</span>
+                                        <span className="font-bold text-black/87">Auto mode</span>
+                                        <span className="text-black/60">Get transcripts of all meetings</span>
                                     </Label>
                                 </div>
                                 <div className="flex items-start gap-2">
                                     <RadioGroupItem value="manual" id="manual-mode" className="mt-0.5" />
                                     <Label htmlFor="manual-mode" className="flex-col items-start font-normal">
-                                        <span className="font-bold">Manual mode</span>
-                                        <span className="text-muted-foreground">
+                                        <span className="font-bold text-black/87">Manual mode</span>
+                                        <span className="text-black/60">
                                             Switch on transcript when needed during the meeting
                                         </span>
                                     </Label>
@@ -172,7 +173,7 @@ export default function SettingsView() {
                                     checked={hideCaptions}
                                     onCheckedChange={(v) => handleHideCaptionsChange(v === true)}
                                 />
-                                <Label htmlFor="hide-captions" className="font-bold">
+                                <Label htmlFor="hide-captions" className="font-bold text-black/87">
                                     Hide captions on the meeting UI
                                 </Label>
                             </div>
@@ -181,8 +182,8 @@ export default function SettingsView() {
                         <div>
                             <div className="flex items-start justify-between gap-4">
                                 <div>
-                                    <p className="font-bold">Enable LLM summary</p>
-                                    <p className="text-muted-foreground mt-1 text-sm">
+                                    <p className="font-bold text-black/87">Enable LLM summary</p>
+                                    <p className="mt-1 text-sm text-black/60">
                                         Configure a provider and pick a model on the Integrations page.
                                     </p>
                                 </div>
@@ -193,8 +194,8 @@ export default function SettingsView() {
 
                             <div className={`flex items-start justify-between gap-4 ${llmEnabled ? "" : "opacity-50"}`}>
                                 <div>
-                                    <p className="font-bold">Automatically run</p>
-                                    <p className="text-muted-foreground mt-1 text-sm">
+                                    <p className="font-bold text-black/87">Automatically run</p>
+                                    <p className="mt-1 text-sm text-black/60">
                                         Summarize automatically whenever a meeting is saved to Obsidian. Turn off to
                                         only summarize on demand — a "Summarize now" action stays available in each
                                         meeting's menu on the Meetings page either way.
@@ -210,7 +211,7 @@ export default function SettingsView() {
                                 <Input
                                     type="number"
                                     id="obsidian-llm-timeout"
-                                    className="mt-2"
+                                    className="mt-2 rounded-none"
                                     min={1000}
                                     step={1000}
                                     placeholder="300000"
@@ -218,7 +219,7 @@ export default function SettingsView() {
                                     disabled={!llmEnabled}
                                     onChange={(e) => setLlmTimeoutMs(e.target.value)}
                                 />
-                                <p className="text-muted-foreground mt-1 text-xs">
+                                <p className="mt-1 text-xs text-black/60">
                                     How long to wait before giving up and saving the plain transcript instead.
                                     Default is 300000 (5 minutes) — models can be slow, especially on long
                                     transcripts.
@@ -234,6 +235,7 @@ export default function SettingsView() {
                                         type="button"
                                         variant="ghost"
                                         size="sm"
+                                        className="rounded-none"
                                         disabled={!llmEnabled}
                                         onClick={handleResetSystemPrompt}
                                     >
@@ -242,12 +244,12 @@ export default function SettingsView() {
                                 </div>
                                 <Textarea
                                     id="obsidian-llm-system-prompt"
-                                    className="mt-2 min-h-48 font-mono text-xs"
+                                    className="mt-2 min-h-48 rounded-none font-mono text-xs"
                                     value={llmSystemPrompt}
                                     disabled={!llmEnabled}
                                     onChange={(e) => setLlmSystemPrompt(e.target.value)}
                                 />
-                                <p className="text-muted-foreground mt-1 text-xs">
+                                <p className="text-black/60 mt-1 text-xs">
                                     The full instruction sent to the model before every summarization request.
                                     Editing out the "respond with a single JSON object" instruction will break
                                     summarization — use Reset to default if that happens.
@@ -255,11 +257,11 @@ export default function SettingsView() {
                             </div>
                         </div>
                     ) : (
-                        <p className="text-muted-foreground flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
+                        <p className="text-black/60 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
                             <span>v{version}</span>
                             <span>·</span>
                             <a
-                                className="text-primary font-bold underline underline-offset-4"
+                                className="font-bold text-black/87 underline underline-offset-4"
                                 href="https://github.com/vivek-nexus/transcriptonic?tab=readme-ov-file#notice"
                                 target="_blank"
                                 rel="noreferrer"
@@ -268,7 +270,7 @@ export default function SettingsView() {
                             </a>
                             <span>·</span>
                             <a
-                                className="text-primary font-bold underline underline-offset-4"
+                                className="font-bold text-black/87 underline underline-offset-4"
                                 href="https://github.com/vivek-nexus/transcriptonic#readme"
                                 target="_blank"
                                 rel="noreferrer"
@@ -277,7 +279,7 @@ export default function SettingsView() {
                             </a>
                             <span>·</span>
                             <a
-                                className="text-primary font-bold underline underline-offset-4"
+                                className="font-bold text-black/87 underline underline-offset-4"
                                 href="https://github.com/vivek-nexus/transcriptonic/issues"
                                 target="_blank"
                                 rel="noreferrer"
@@ -288,7 +290,7 @@ export default function SettingsView() {
                             <span>
                                 Another project by{" "}
                                 <a
-                                    className="text-primary font-bold underline underline-offset-4"
+                                    className="font-bold text-black/87 underline underline-offset-4"
                                     href="https://vivek-nexus.github.io"
                                     target="_blank"
                                     rel="noreferrer"

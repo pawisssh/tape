@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { Link2 } from "lucide-react"
+import { LinkIcon } from "../ui/icons"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -155,7 +155,7 @@ export default function ProviderPanel({ provider, onSaved, onDeleted, allowedTyp
                     <div>
                         <Label>Provider</Label>
                         <Select value={type} onValueChange={handleTypeChange}>
-                            <SelectTrigger className="mt-2 w-full">
+                            <SelectTrigger className="mt-2 w-full rounded-none">
                                 <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
@@ -173,7 +173,7 @@ export default function ProviderPanel({ provider, onSaved, onDeleted, allowedTyp
                     <Label htmlFor="provider-name">Provider name</Label>
                     <Input
                         id="provider-name"
-                        className="mt-2"
+                        className="mt-2 rounded-none"
                         value={name}
                         onChange={(e) => setName(e.target.value)}
                         placeholder="Provider name"
@@ -184,7 +184,7 @@ export default function ProviderPanel({ provider, onSaved, onDeleted, allowedTyp
                     <Label htmlFor="provider-base-url">Base URL</Label>
                     <Input
                         id="provider-base-url"
-                        className="mt-2"
+                        className="mt-2 rounded-none"
                         value={baseUrl}
                         onChange={(e) => setBaseUrl(e.target.value)}
                         placeholder="Base URL"
@@ -193,12 +193,13 @@ export default function ProviderPanel({ provider, onSaved, onDeleted, allowedTyp
 
                 <div>
                     <Label htmlFor="provider-api-key">API key</Label>
-                    <p className="text-muted-foreground mt-1 mb-2 text-xs">
+                    <p className="mt-1 mb-2 text-xs text-black/60">
                         Optional — required by most cloud providers, not needed for a local server.
                     </p>
                     <Input
                         id="provider-api-key"
                         type="password"
+                        className="rounded-none"
                         value={apiKey}
                         onChange={(e) => setApiKey(e.target.value)}
                         placeholder="API key"
@@ -211,7 +212,7 @@ export default function ProviderPanel({ provider, onSaved, onDeleted, allowedTyp
                     <Button
                         type="button"
                         variant="ghost"
-                        className="text-destructive hover:text-destructive"
+                        className="rounded-none text-destructive hover:text-destructive"
                         onClick={() => setConfirmingDelete(true)}
                     >
                         Delete
@@ -219,8 +220,8 @@ export default function ProviderPanel({ provider, onSaved, onDeleted, allowedTyp
                 ) : (
                     <span />
                 )}
-                <Button type="button" variant="outline" disabled={isConnecting} onClick={handleConnect}>
-                    <Link2 /> {isConnecting ? "Connecting…" : "Connect"}
+                <Button type="button" variant="outline" className="rounded-none" disabled={isConnecting} onClick={handleConnect}>
+                    <LinkIcon className="size-4" /> {isConnecting ? "Connecting…" : "Connect"}
                 </Button>
             </div>
 

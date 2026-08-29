@@ -1,16 +1,16 @@
 import { useEffect, useState } from "react"
-import { Webhook } from "lucide-react"
-import { Badge } from "@/components/ui/badge"
+import { Link2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardAction } from "@/components/ui/card"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
+import { Separator } from "@/components/ui/separator"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { getSync, onStorageChanged, setSync } from "@/lib/chrome-storage"
 import { requestPermissions, webhookOriginPattern } from "@/lib/permissions"
 import { toast } from "@/components/ui/toast"
+import { useDebouncedEffect } from "@/hooks/use-debounced-effect"
 import guideIcon from "../../extension/icons/guide.svg"
 
 const SIMPLE_BODY_EXAMPLE = `{
@@ -55,12 +55,15 @@ const ADVANCED_BODY_EXAMPLE = `{
     ]
 }`
 
+// Rendered directly in the Integrations page's detail panel (see IntegrationsView.tsx) —
+// no Dialog/modal chrome of its own.
 export default function WebhookSection() {
     const [webhookUrl, setWebhookUrl] = useState("")
     const [autoPost, setAutoPost] = useState(true)
     const [autoDownload, setAutoDownload] = useState(true)
     const [obsidianAutoSaveOn, setObsidianAutoSaveOn] = useState(false)
     const [bodyType, setBodyType] = useState<"simple" | "advanced">("simple")
+    const [isConnecting, setIsConnecting] = useState(false)
 
     useEffect(() => {
         function load() {
@@ -69,19 +72,21 @@ export default function WebhookSection() {
                 "autoPostWebhookAfterMeeting",
                 "autoDownloadFileAfterMeeting",
                 "webhookBodyType",
-                "autoSaveToObsidianAfterMeeting",
+                "obsidianVaultName",
             ]).then((result) => {
                 setWebhookUrl(result.webhookUrl || "")
                 setAutoPost(result.autoPostWebhookAfterMeeting === true)
                 setAutoDownload(result.autoDownloadFileAfterMeeting !== false)
                 setBodyType(result.webhookBodyType === "advanced" ? "advanced" : "simple")
-                setObsidianAutoSaveOn(result.autoSaveToObsidianAfterMeeting === true)
+                // Obsidian auto-save has no toggle of its own — it's on whenever a vault
+                // name is configured (see getObsidianSettings() in store.js).
+                setObsidianAutoSaveOn(!!result.obsidianVaultName)
             })
         }
         load()
         return onStorageChanged((changes, area) => {
-            if (area === "sync" && changes.autoSaveToObsidianAfterMeeting) {
-                setObsidianAutoSaveOn(changes.autoSaveToObsidianAfterMeeting.newValue === true)
+            if (area === "sync" && changes.obsidianVaultName) {
+                setObsidianAutoSaveOn(!!changes.obsidianVaultName.newValue)
             }
         })
     }, [])
@@ -103,19 +108,33 @@ export default function WebhookSection() {
         return requestPermissions([originPattern], ["notifications"])
     }
 
-    function handleSubmit(e: React.FormEvent) {
-        e.preventDefault()
-        if (webhookUrl === "") {
-            setSync({ webhookUrl }).then(() => toast.add({ title: "Webhook URL saved", type: "success" }))
-            return
-        }
+    // Autosave only covers clearing the field — writing a non-empty URL needs a host
+    // permission grant, and Chrome refuses chrome.permissions.request() calls made
+    // outside a genuine click, so that path stays behind the explicit Connect button
+    // (handleConnect) below rather than firing from this debounce timer.
+    useDebouncedEffect(
+        () => {
+            if (webhookUrl === "") {
+                setSync({ webhookUrl })
+            }
+        },
+        [webhookUrl],
+        700,
+    )
+
+    function handleConnect() {
+        setIsConnecting(true)
         requestWebhookAndNotificationPermission(webhookUrl)
             .then((granted) => {
                 if (!granted) throw new Error("Permission denied")
                 return setSync({ webhookUrl })
             })
-            .then(() => toast.add({ title: "Webhook URL saved", type: "success" }))
+            .then(() => {
+                setIsConnecting(false)
+                toast.add({ title: "Webhook URL saved", type: "success" })
+            })
             .catch((error) => {
+                setIsConnecting(false)
                 toast.add({
                     title: "Webhook URL not saved",
                     description: "Permission to contact that URL was denied.",
@@ -146,124 +165,111 @@ export default function WebhookSection() {
 
     return (
         <div>
-            <Card>
-                <CardHeader>
-                    <div className="flex items-center gap-2">
-                        <Webhook className="text-muted-foreground size-5" />
-                        <CardTitle>Webhook</CardTitle>
+            <div>
+                <Label htmlFor="webhook-url">Webhook URL</Label>
+                <div className="mt-2 flex">
+                    <Input
+                        type="url"
+                        id="webhook-url"
+                        className="rounded-r-none"
+                        placeholder="https://your-webhook-url.com"
+                        value={webhookUrl}
+                        onChange={(e) => setWebhookUrl(e.target.value)}
+                    />
+                    <Button
+                        type="button"
+                        variant="outline"
+                        className="rounded-l-none"
+                        disabled={isConnecting || !webhookUrl.trim()}
+                        onClick={handleConnect}
+                    >
+                        <Link2 /> {isConnecting ? "Connecting…" : "Connect"}
+                    </Button>
+                </div>
+            </div>
+
+            <Separator className="my-4" />
+
+            <div>
+                <div className="flex items-center gap-2">
+                    <Checkbox id="auto-post-webhook" checked={autoPost} onCheckedChange={(v) => handleAutoPostChange(v === true)} />
+                    <Label htmlFor="auto-post-webhook">Automatically post transcript to webhook URL, after each meeting</Label>
+                </div>
+                {anotherExporterActive ? (
+                    <div className="mt-4 flex items-center gap-2">
+                        <Checkbox
+                            id="auto-download-file"
+                            checked={autoDownload}
+                            onCheckedChange={(v) => handleAutoDownloadChange(v === true)}
+                        />
+                        <Label htmlFor="auto-download-file">Automatically download transcript text file, after each meeting</Label>
                     </div>
-                    <CardDescription>
-                        Connect TranscripTonic directly to any tool that supports webhooks. If it does not, use
-                        automation tools like n8n as a bridge.
-                    </CardDescription>
-                    <CardAction>
-                        <Badge variant={webhookUrl ? "default" : "outline"}>
-                            {webhookUrl ? "Configured" : "Not configured"}
-                        </Badge>
-                    </CardAction>
-                </CardHeader>
-                <CardContent>
-                    <form onSubmit={handleSubmit}>
-                        <Label htmlFor="webhook-url">Webhook URL</Label>
-                        <div className="mt-2 flex">
-                            <Input
-                                type="url"
-                                id="webhook-url"
-                                className="rounded-r-none"
-                                placeholder="https://your-webhook-url.com"
-                                value={webhookUrl}
-                                onChange={(e) => setWebhookUrl(e.target.value)}
-                            />
-                            <Button type="submit" className="rounded-l-none">
-                                Save
-                            </Button>
-                        </div>
-                    </form>
+                ) : null}
+            </div>
 
-                    <hr className="my-6" />
+            <Separator className="my-4" />
 
-                    <div>
-                        <div className="flex items-center gap-2">
-                            <Checkbox id="auto-post-webhook" checked={autoPost} onCheckedChange={(v) => handleAutoPostChange(v === true)} />
-                            <Label htmlFor="auto-post-webhook">Automatically post transcript to webhook URL, after each meeting</Label>
-                        </div>
-                        {anotherExporterActive ? (
-                            <div className="mt-6 flex items-center gap-2">
-                                <Checkbox
-                                    id="auto-download-file"
-                                    checked={autoDownload}
-                                    onCheckedChange={(v) => handleAutoDownloadChange(v === true)}
-                                />
-                                <Label htmlFor="auto-download-file">Automatically download transcript text file, after each meeting</Label>
-                            </div>
-                        ) : null}
-                    </div>
+            <RadioGroup value={bodyType} onValueChange={handleBodyTypeChange} className="gap-4">
+                <div className="flex items-start gap-2">
+                    <RadioGroupItem value="simple" id="simple-webhook-body" className="mt-0.5" />
+                    <Label htmlFor="simple-webhook-body" className="flex-col items-start font-normal">
+                        <span className="font-bold">Simple webhook body</span>
+                        <span className="text-muted-foreground">Pre-formatted data, suitable for no-code integrations</span>
+                    </Label>
+                </div>
+                <div className="flex items-start gap-2">
+                    <RadioGroupItem value="advanced" id="advanced-webhook-body" className="mt-0.5" />
+                    <Label htmlFor="advanced-webhook-body" className="flex-col items-start font-normal">
+                        <span className="font-bold">Advanced webhook body</span>
+                        <span className="text-muted-foreground">Raw data, suitable for code integrations</span>
+                    </Label>
+                </div>
+            </RadioGroup>
 
-                    <hr className="my-6" />
+            <Separator className="my-4" />
 
-                    <RadioGroup value={bodyType} onValueChange={handleBodyTypeChange} className="gap-4">
-                        <div className="flex items-start gap-2">
-                            <RadioGroupItem value="simple" id="simple-webhook-body" className="mt-0.5" />
-                            <Label htmlFor="simple-webhook-body" className="flex-col items-start font-normal">
-                                <span className="font-bold">Simple webhook body</span>
-                                <span className="text-muted-foreground">Pre-formatted data, suitable for no-code integrations</span>
-                            </Label>
-                        </div>
-                        <div className="flex items-start gap-2">
-                            <RadioGroupItem value="advanced" id="advanced-webhook-body" className="mt-0.5" />
-                            <Label htmlFor="advanced-webhook-body" className="flex-col items-start font-normal">
-                                <span className="font-bold">Advanced webhook body</span>
-                                <span className="text-muted-foreground">Raw data, suitable for code integrations</span>
-                            </Label>
-                        </div>
-                    </RadioGroup>
-
-                    <hr className="my-6" />
-
-                    <p className="font-bold">Webhook help</p>
-                    <p className="text-muted-foreground mt-1 mb-3 text-sm">Integration guides</p>
-                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                        <a
-                            className="border-primary/50 text-primary flex items-start gap-2 rounded-lg border p-2 font-bold"
-                            href="https://github.com/vivek-nexus/transcriptonic/wiki/Google-Docs-integration-guide?utm_source=extension"
-                            target="_blank"
-                            rel="noreferrer"
-                        >
-                            <img src={guideIcon} alt="" width={16} />
-                            <span>Get transcripts on Google Docs</span>
-                        </a>
-                        <a
-                            className="border-primary/50 text-primary flex items-start gap-2 rounded-lg border p-2 font-bold"
-                            href="https://github.com/vivek-nexus/transcriptonic/wiki/n8n-integration-guide?utm_source=extension"
-                            target="_blank"
-                            rel="noreferrer"
-                        >
-                            <img src={guideIcon} alt="" width={16} />
-                            <span>Using webhooks with n8n</span>
-                        </a>
-                    </div>
-                    <hr className="my-6" />
-                    <p className="font-bold">Webhook JSON body</p>
-                    <div>
-                        <Collapsible>
-                            <CollapsibleTrigger className="text-primary font-bold">Webhook body (simple)</CollapsibleTrigger>
-                            <CollapsibleContent>
-                                <pre className="bg-foreground/5 my-4 overflow-x-auto rounded-lg p-4 text-xs leading-relaxed">
-                                    {SIMPLE_BODY_EXAMPLE}
-                                </pre>
-                            </CollapsibleContent>
-                        </Collapsible>
-                        <Collapsible>
-                            <CollapsibleTrigger className="text-primary font-bold">Webhook body (advanced)</CollapsibleTrigger>
-                            <CollapsibleContent>
-                                <pre className="bg-foreground/5 my-4 overflow-x-auto rounded-lg p-4 text-xs leading-relaxed">
-                                    {ADVANCED_BODY_EXAMPLE}
-                                </pre>
-                            </CollapsibleContent>
-                        </Collapsible>
-                    </div>
-                </CardContent>
-            </Card>
+            <p className="font-bold">Webhook help</p>
+            <p className="text-muted-foreground mt-1 mb-3 text-sm">Integration guides</p>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <a
+                    className="border-primary/50 text-primary flex items-start gap-2 rounded-lg border p-2 font-bold"
+                    href="https://github.com/vivek-nexus/transcriptonic/wiki/Google-Docs-integration-guide?utm_source=extension"
+                    target="_blank"
+                    rel="noreferrer"
+                >
+                    <img src={guideIcon} alt="" width={16} />
+                    <span>Get transcripts on Google Docs</span>
+                </a>
+                <a
+                    className="border-primary/50 text-primary flex items-start gap-2 rounded-lg border p-2 font-bold"
+                    href="https://github.com/vivek-nexus/transcriptonic/wiki/n8n-integration-guide?utm_source=extension"
+                    target="_blank"
+                    rel="noreferrer"
+                >
+                    <img src={guideIcon} alt="" width={16} />
+                    <span>Using webhooks with n8n</span>
+                </a>
+            </div>
+            <Separator className="my-4" />
+            <p className="font-bold">Webhook JSON body</p>
+            <div>
+                <Collapsible>
+                    <CollapsibleTrigger className="text-primary font-bold">Webhook body (simple)</CollapsibleTrigger>
+                    <CollapsibleContent>
+                        <pre className="bg-foreground/5 my-4 overflow-x-auto rounded-lg p-4 text-xs leading-relaxed">
+                            {SIMPLE_BODY_EXAMPLE}
+                        </pre>
+                    </CollapsibleContent>
+                </Collapsible>
+                <Collapsible>
+                    <CollapsibleTrigger className="text-primary font-bold">Webhook body (advanced)</CollapsibleTrigger>
+                    <CollapsibleContent>
+                        <pre className="bg-foreground/5 my-4 overflow-x-auto rounded-lg p-4 text-xs leading-relaxed">
+                            {ADVANCED_BODY_EXAMPLE}
+                        </pre>
+                    </CollapsibleContent>
+                </Collapsible>
+            </div>
         </div>
     )
 }

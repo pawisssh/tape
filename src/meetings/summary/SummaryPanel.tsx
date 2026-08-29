@@ -1,29 +1,22 @@
-import { CheckSquare, CircleDot, HelpCircle, ArrowRight, Sparkles, Layers } from "lucide-react"
+import { cn } from "@/lib/utils"
 import { parseSummaryMarkdown, isSummaryEmpty, type TimestampedItem } from "./parse-summary-markdown"
+import CollapsibleSection from "../ui/CollapsibleSection"
+import { CheckCircleFillIcon, CircleIcon } from "../ui/icons"
 
 function TimestampChip({ timestamp }: { timestamp?: string }) {
     if (!timestamp) return null
     return (
-        <span className="text-muted-foreground bg-foreground/5 ml-1.5 shrink-0 rounded px-1 py-0.5 font-mono text-[10px] tabular-nums">
+        <span className="font-meetings-mono ml-1.5 shrink-0 bg-black/5 px-1 py-0.5 text-[10px] text-black/38 tabular-nums">
             {timestamp}
         </span>
     )
 }
 
-function SectionHeading({ icon: Icon, children }: { icon: typeof CheckSquare; children: React.ReactNode }) {
-    return (
-        <div className="text-foreground/80 mb-2 flex items-center gap-1.5 text-xs font-bold tracking-wide uppercase">
-            <Icon className="size-3.5" />
-            {children}
-        </div>
-    )
-}
-
 function TimestampedList({ items }: { items: TimestampedItem[] }) {
     return (
-        <ul className="flex flex-col gap-1.5">
+        <ul className="flex flex-col gap-2">
             {items.map((item, i) => (
-                <li key={i} className="flex items-start justify-between gap-2 text-sm">
+                <li key={i} className="flex items-start justify-between gap-2 text-sm text-black/87">
                     <span>{item.text}</span>
                     <TimestampChip timestamp={item.timestamp} />
                 </li>
@@ -32,81 +25,89 @@ function TimestampedList({ items }: { items: TimestampedItem[] }) {
     )
 }
 
-export default function SummaryPanel({ markdown }: { markdown: string | undefined }) {
+interface SummaryPanelProps {
+    markdown: string | undefined
+    onToggleActionItem: (itemIndex: number) => void
+}
+
+export default function SummaryPanel({ markdown, onToggleActionItem }: SummaryPanelProps) {
     const summary = parseSummaryMarkdown(markdown)
 
     if (isSummaryEmpty(summary)) {
-        return <p className="text-muted-foreground text-sm">No summary yet.</p>
+        if (markdown && markdown.trim()) {
+            // A custom template's noteContent used headings/structure the fixed parser
+            // above doesn't recognize (it's hand-rolled against the built-in default
+            // template's exact output shape) — fall back to showing it as-is rather than
+            // claiming there's no summary when there plainly is one.
+            return <div className="px-4 py-4 text-sm whitespace-pre-wrap text-black/87">{markdown}</div>
+        }
+        return <p className="px-4 py-4 text-sm text-black/60">No summary yet.</p>
     }
 
     return (
-        <div className="flex flex-col gap-5">
+        <div className="flex flex-col">
             {summary.actionItems.length > 0 && (
-                <section>
-                    <SectionHeading icon={CheckSquare}>Action items</SectionHeading>
-                    <ul className="flex flex-col gap-1.5">
+                <CollapsibleSection label="Action Items" defaultOpen>
+                    <ul className="flex flex-col gap-2">
                         {summary.actionItems.map((item, i) => (
-                            <li key={i} className="flex items-start justify-between gap-2 text-sm">
-                                <span className="flex items-start gap-2">
-                                    <span
-                                        aria-hidden
-                                        className="border-muted-foreground/50 mt-0.5 inline-block size-3.5 shrink-0 rounded-sm border"
-                                    />
-                                    {item.text}
-                                </span>
+                            <li key={i} className="flex items-center gap-2.5 text-sm">
+                                <button type="button" onClick={() => onToggleActionItem(i)} className="shrink-0">
+                                    {item.done ? (
+                                        <CheckCircleFillIcon className="size-6 text-black/87" />
+                                    ) : (
+                                        <CircleIcon className="size-6 text-black/87" />
+                                    )}
+                                </button>
+                                <span className={cn("flex-1 text-black/87", item.done && "line-through")}>{item.text}</span>
+                                {item.assignee ? <span className="shrink-0 text-black/87">{item.assignee}</span> : null}
                                 <TimestampChip timestamp={item.timestamp} />
                             </li>
                         ))}
                     </ul>
-                </section>
+                </CollapsibleSection>
             )}
 
             {summary.decisions.length > 0 && (
-                <section>
-                    <SectionHeading icon={CircleDot}>Decisions made</SectionHeading>
+                <CollapsibleSection label="Decision made">
                     <TimestampedList items={summary.decisions} />
-                </section>
+                </CollapsibleSection>
             )}
 
             {summary.openQuestions.length > 0 && (
-                <section>
-                    <SectionHeading icon={HelpCircle}>Open questions</SectionHeading>
+                <CollapsibleSection label="Open questions">
                     <TimestampedList items={summary.openQuestions} />
-                </section>
+                </CollapsibleSection>
             )}
 
             {summary.nextSteps.length > 0 && (
-                <section>
-                    <SectionHeading icon={ArrowRight}>Next steps</SectionHeading>
+                <CollapsibleSection label="Next steps">
                     <TimestampedList items={summary.nextSteps} />
-                </section>
+                </CollapsibleSection>
             )}
 
             {summary.keyTakeaways.length > 0 && (
-                <section>
-                    <SectionHeading icon={Sparkles}>Key takeaways</SectionHeading>
-                    <ul className="flex flex-col gap-1.5">
+                <CollapsibleSection label="TL;DR">
+                    <ul className="flex flex-col gap-2">
                         {summary.keyTakeaways.map((item, i) => (
-                            <li key={i} className="text-sm">
+                            <li key={i} className="text-sm text-black/87">
                                 <span className="font-bold">{item.lead}:</span> {item.detail}
                             </li>
                         ))}
                     </ul>
-                </section>
+                </CollapsibleSection>
             )}
 
             {summary.topics.length > 0 && (
-                <section>
-                    <SectionHeading icon={Layers}>Topics</SectionHeading>
+                <CollapsibleSection label="Topics">
                     <div className="flex flex-col gap-3">
                         {summary.topics.map((topic, i) => (
                             <div key={i}>
-                                <p className="mb-1 text-sm font-bold">{topic.heading}</p>
+                                <p className="mb-1 text-sm font-bold text-black/87">{topic.heading}</p>
                                 <TimestampedList items={topic.points} />
                             </div>
                         ))}
                     </div>
-                </section>
+                </CollapsibleSection>
             )}
         </div>
     )

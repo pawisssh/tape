@@ -6,8 +6,10 @@
 // `node --test`. See PLAN.md Phase 3 / §8 for the correctness requirements this file
 // is held to.
 
+import { parseTemplateSegments, applyFilters } from "./template-syntax.js"
+
 /** @type {ObsidianFileNameTemplate} */
-export const DEFAULT_FILENAME_TEMPLATE = "{{date}} - {{title}}"
+export const DEFAULT_FILENAME_TEMPLATE = '{{date}}-{{"a concise, engaging title for this meeting"|kebab}}-meeting-note'
 
 // Conservative safety margin for a filename component (not a full path). Most
 // filesystems in practical use (APFS, ext4, NTFS) allow up to 255 bytes per path
@@ -128,30 +130,54 @@ export function formatElapsedTime(startIso, eventIso) {
 
 /**
  * Build the destination filename (including the .md extension) from a template.
- * Each token's *value* is sanitized individually before substitution (so a "/" or ":"
- * inside a meeting title never becomes a path separator or otherwise corrupts the
+ * Each token's *resolved* value is sanitized individually before substitution (so a "/"
+ * or ":" inside a meeting title never becomes a path separator or otherwise corrupts the
  * template's intended structure), and the fully-substituted result is sanitized again
  * defensively (covers illegal characters that were literally present in a user-authored
  * template, and re-validates the reserved-name/leading-trailing-dot rules against the
  * final combined string). Truncates to a conservative max length, preserving the
  * extension.
+ *
+ * Tokenized via template-syntax.js's parseTemplateSegments()/applyFilters() — the same
+ * {{...}}/filter engine extension/obsidian/interpreter.js uses for Properties/Note
+ * content — so a filter like `|kebab` works here too. Bare variables resolve from this
+ * function's own small local map: `{{date}}`/`{{time}}` are the MEETING's own date/time
+ * (deliberately NOT interpreter.js's `{{date}}`, which means "today" — that's a
+ * different, unrelated variable table), `{{title}}` the meeting's raw title, `{{platform}}`
+ * the meeting software. A quoted `{{"..."}}` token (any text) resolves to `options.aiTitle`
+ * when provided and non-empty (the title already produced by the meeting's LLM summary,
+ * see extension/obsidian/llm.js's enrichWithLlm), falling back to the meeting's own title
+ * otherwise — so a filename never blocks on LLM/network availability — with that
+ * segment's own filters (e.g. `|kebab`) still applied to whichever value it resolved to.
  * @param {ObsidianFileNameTemplate | undefined | null} template
  * @param {Meeting} meeting
+ * @param {{aiTitle?: string}} [options]
  * @returns {string}
  */
-export function buildFilename(template, meeting) {
+export function buildFilename(template, meeting, options) {
     const effectiveTemplate = template || DEFAULT_FILENAME_TEMPLATE
 
-    const tokenValues = {
-        "{{date}}": sanitizeFilenameComponent(formatDateToken(meeting.meetingStartTimestamp)),
-        "{{time}}": sanitizeFilenameComponent(formatTimeToken(meeting.meetingStartTimestamp)),
-        "{{title}}": sanitizeFilenameComponent(getMeetingTitle(meeting)),
-        "{{software}}": sanitizeFilenameComponent(meeting.meetingSoftware || "Meeting"),
+    /** @type {Record<string, string>} */
+    const localVariables = {
+        date: formatDateToken(meeting.meetingStartTimestamp),
+        time: formatTimeToken(meeting.meetingStartTimestamp),
+        title: getMeetingTitle(meeting),
+        platform: meeting.meetingSoftware || "Meeting",
     }
 
-    let result = effectiveTemplate
-    for (const [token, value] of Object.entries(tokenValues)) {
-        result = result.split(token).join(value)
+    let result = ""
+    for (const seg of parseTemplateSegments(effectiveTemplate)) {
+        if (seg.kind === "literal") {
+            result += seg.text
+            continue
+        }
+        const rawValue =
+            seg.kind === "variable"
+                ? Object.prototype.hasOwnProperty.call(localVariables, seg.name)
+                    ? localVariables[seg.name]
+                    : ""
+                : (options && options.aiTitle) || getMeetingTitle(meeting)
+        result += sanitizeFilenameComponent(applyFilters(rawValue, seg.filters))
     }
 
     result = sanitizeFilenameComponent(result)
@@ -215,6 +241,57 @@ export function getParticipants(transcript, chatMessages) {
 }
 
 /**
+ * @typedef {{name: string, value: string | string[], type: TemplatePropertyType}} FrontmatterField
+ */
+
+/**
+ * Render one frontmatter field as one or more YAML lines, per its type: text/date/
+ * number/checkbox render as a single scalar line (non-string/array values are coerced —
+ * joined with ", " if an array slipped in, e.g. a mistyped property type — never
+ * throws); multitext renders as a YAML sequence (`name: []` inline for an empty array,
+ * matching the original hardcoded `participants: []` behavior exactly).
+ * @param {FrontmatterField} field
+ * @returns {string[]}
+ */
+export function renderFrontmatterField(field) {
+    const toScalarString = (value) => {
+        if (Array.isArray(value)) return value.join(", ")
+        if (value === undefined || value === null) return ""
+        return String(value)
+    }
+
+    if (field.type === "multitext") {
+        const items = Array.isArray(field.value) ? field.value : toScalarString(field.value).split(",").map((s) => s.trim()).filter(Boolean)
+        if (items.length === 0) {
+            return [`${field.name}: []`]
+        }
+        return [`${field.name}:`, ...items.map((item) => `  - ${toYamlString(item)}`)]
+    }
+
+    return [`${field.name}: ${toYamlString(toScalarString(field.value))}`]
+}
+
+/**
+ * Overlay `overlay` fields on top of `baseline` by `name` — an overlay entry replaces a
+ * baseline entry with the same name in place (preserving the baseline's field order),
+ * and any overlay name not already in the baseline is appended in overlay order.
+ * @param {FrontmatterField[]} baseline
+ * @param {FrontmatterField[]} overlay
+ * @returns {FrontmatterField[]}
+ */
+export function mergeFrontmatterFields(baseline, overlay) {
+    const overlayByName = new Map((overlay || []).map((f) => [f.name, f]))
+    const merged = baseline.map((f) => overlayByName.get(f.name) || f)
+    const baselineNames = new Set(baseline.map((f) => f.name))
+    for (const f of overlay || []) {
+        if (!baselineNames.has(f.name)) {
+            merged.push(f)
+        }
+    }
+    return merged
+}
+
+/**
  * @param {Meeting} meeting
  * @param {MarkdownBuildOptions} [options]
  * @returns {string}
@@ -223,27 +300,23 @@ export function buildFrontmatter(meeting, options) {
     const title = (options && options.overrideTitle) || getMeetingTitle(meeting)
     const date = formatDateToken(meeting.meetingStartTimestamp)
     const duration = formatDuration(meeting.meetingStartTimestamp, meeting.meetingEndTimestamp)
-    const software = meeting.meetingSoftware || ""
+    const platform = meeting.meetingSoftware || ""
     const participants = getParticipants(meeting.transcript, meeting.chatMessages)
 
-    const lines = ["---"]
-    lines.push(`title: ${toYamlString(title)}`)
-    lines.push(`date: ${toYamlString(date)}`)
-    lines.push(`start: ${toYamlString(meeting.meetingStartTimestamp)}`)
-    lines.push(`end: ${toYamlString(meeting.meetingEndTimestamp)}`)
-    lines.push(`duration: ${toYamlString(duration)}`)
-    lines.push(`software: ${toYamlString(software)}`)
-    if (participants.length > 0) {
-        lines.push("participants:")
-        for (const name of participants) {
-            lines.push(`  - ${toYamlString(name)}`)
-        }
-    } else {
-        lines.push("participants: []")
-    }
-    lines.push("---")
+    /** @type {FrontmatterField[]} */
+    const baseline = [
+        { name: "title", type: "text", value: title },
+        { name: "date", type: "date", value: date },
+        { name: "start", type: "date", value: meeting.meetingStartTimestamp },
+        { name: "end", type: "date", value: meeting.meetingEndTimestamp },
+        { name: "duration", type: "text", value: duration },
+        { name: "platform", type: "text", value: platform },
+        { name: "participants", type: "multitext", value: participants },
+    ]
 
-    return lines.join("\n")
+    const merged = mergeFrontmatterFields(baseline, (options && options.resolvedProperties) || [])
+
+    return ["---", ...merged.flatMap(renderFrontmatterField), "---"].join("\n")
 }
 
 /**
@@ -281,18 +354,51 @@ function formatDisplayTime(isoTimestamp) {
 }
 
 /**
+ * The transcript's body text — speaker-grouped turns, no heading of its own. Used both
+ * by renderTranscriptSection() below (which prepends the "## Transcript" heading) and
+ * as interpreter.js's {{transcript}} variable (where the template supplies its own
+ * heading, so no heading belongs here).
+ * @param {Transcript} transcript
+ * @returns {string}
+ */
+export function renderTranscriptBody(transcript) {
+    const groups = groupTranscriptBySpeaker(transcript)
+    if (groups.length === 0) {
+        return "_No transcript captured for this meeting._"
+    }
+    const lines = []
+    for (const group of groups) {
+        lines.push(`**${group.personName}** (${formatDisplayTime(group.timestamp)})`)
+        lines.push(group.text)
+        lines.push("")
+    }
+    return lines.join("\n").trimEnd()
+}
+
+/**
  * @param {Transcript} transcript
  * @returns {string}
  */
 export function renderTranscriptSection(transcript) {
-    const groups = groupTranscriptBySpeaker(transcript)
-    if (groups.length === 0) {
-        return "## Transcript\n\n_No transcript captured for this meeting._"
+    return `## Transcript\n\n${renderTranscriptBody(transcript)}`
+}
+
+/**
+ * The chat messages' body text — no heading of its own (see renderTranscriptBody's doc
+ * comment for why). Empty string if there are no chat messages at all (same as
+ * renderChatSection — a template that references {{chatMessages}} unconditionally will
+ * still get a blank result for a meeting with none, same as any other variable).
+ * @param {ChatMessages} chatMessages
+ * @returns {string}
+ */
+export function renderChatBody(chatMessages) {
+    if (!chatMessages || chatMessages.length === 0) {
+        return ""
     }
-    const lines = ["## Transcript", ""]
-    for (const group of groups) {
-        lines.push(`**${group.personName}** (${formatDisplayTime(group.timestamp)})`)
-        lines.push(group.text)
+    const lines = []
+    for (const message of chatMessages) {
+        lines.push(`**${message.personName}** (${formatDisplayTime(message.timestamp)})`)
+        lines.push(message.chatMessageText)
         lines.push("")
     }
     return lines.join("\n").trimEnd()
@@ -303,21 +409,30 @@ export function renderTranscriptSection(transcript) {
  * @returns {string}
  */
 export function renderChatSection(chatMessages) {
-    if (!chatMessages || chatMessages.length === 0) {
-        return ""
-    }
-    const lines = ["## Chat messages", ""]
-    for (const message of chatMessages) {
-        lines.push(`**${message.personName}** (${formatDisplayTime(message.timestamp)})`)
-        lines.push(message.chatMessageText)
-        lines.push("")
-    }
-    return lines.join("\n").trimEnd()
+    const body = renderChatBody(chatMessages)
+    return body ? `## Chat messages\n\n${body}` : ""
+}
+
+/**
+ * The user's freeform per-meeting notes (Notes tab), rendered as the note's last
+ * section — no AI involvement, just the user's own text trimmed and given a heading.
+ * Empty/whitespace-only input renders nothing, same as an empty chat section.
+ * @param {string | undefined | null} userNotes
+ * @returns {string}
+ */
+export function renderNotesSection(userNotes) {
+    const trimmed = (userNotes || "").trim()
+    return trimmed ? `## Notes\n\n${trimmed}` : ""
 }
 
 /**
  * Build the full Markdown note body for a meeting: frontmatter, an H1 title, the
- * transcript section, and (if non-empty) a chat messages section.
+ * summary (if any), and — unless the resolved summary/noteContent already included them
+ * itself (see options.suppressTranscriptSection/suppressChatSection, and
+ * interpreter.js's {{transcript}}/{{chatMessages}} variables) — the transcript section
+ * and (if non-empty) a chat messages section, appended as a safety net so a plain note
+ * (no template, or a template that doesn't reference the transcript) never loses it.
+ * Finally, the user's own Notes-tab content (if any) is appended last.
  * @param {Meeting} meeting
  * @param {MarkdownBuildOptions} [options]
  * @returns {string}
@@ -330,11 +445,22 @@ export function buildMarkdown(meeting, options) {
         sections.push(options.summaryMarkdown, "")
     }
 
-    sections.push(renderTranscriptSection(meeting.transcript))
+    if (!options || !options.suppressTranscriptSection) {
+        sections.push(renderTranscriptSection(meeting.transcript))
+    }
 
-    const chatSection = renderChatSection(meeting.chatMessages)
-    if (chatSection) {
-        sections.push("", chatSection)
+    if (!options || !options.suppressChatSection) {
+        const chatSection = renderChatSection(meeting.chatMessages)
+        if (chatSection) {
+            sections.push("", chatSection)
+        }
+    }
+
+    if (!options || !options.suppressNotesSection) {
+        const notesSection = renderNotesSection(meeting.userNotes)
+        if (notesSection) {
+            sections.push("", notesSection)
+        }
     }
 
     return sections.join("\n").trimEnd() + "\n"

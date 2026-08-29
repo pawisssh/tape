@@ -1,5 +1,6 @@
 import { downloadTranscript, postTranscriptToWebhook } from './exporters.js'
-import { getObsidianSettings, updateMeetingById, getMeetingId } from '../obsidian/store.js'
+import { getObsidianSettings, updateMeetingById, getMeetingId, getMeetingById } from '../obsidian/store.js'
+import { enrichWithLlm } from '../obsidian/llm.js'
 
 // Download transcripts, post webhook if URL is enabled and available
 // Fails if transcript is empty or webhook request fails or if no meetings in storage
@@ -44,7 +45,7 @@ export function processLastMeeting() {
                                 // and any error here is only logged, never propagated to the caller.
                                 // @ts-ignore - Because this line exists in the resolved promise from pickupLastMeetingFromStorage, which clearly means that at least one meeting exists and resultLocal.meetings cannot be undefined.
                                 const lastMeeting = resultLocal.meetings[lastIndex]
-                                triggerObsidianHandoffIfConfigured(lastMeeting, true).catch((error) => {
+                                triggerObsidianHandoffIfConfigured(lastMeeting).catch((error) => {
                                     console.error("Obsidian handoff trigger failed (non-fatal):", error)
                                 })
                             })
@@ -68,7 +69,7 @@ export function processLastMeeting() {
 /**
  * @throws error codes: 013, 014
  */
-// Process transcript and chat messages of the meeting that just ended from storage, format them into strings, and save as a new entry in meetings (keeping last 10)
+// Process transcript and chat messages of the meeting that just ended from storage, format them into strings, and save as a new entry in meetings
 export function pickupLastMeetingFromStorage() {
     return new Promise((resolve, reject) => {
         chrome.storage.local.get([
@@ -100,12 +101,9 @@ export function pickupLastMeetingFromStorage() {
                         let meetings = resultLocal.meetings || []
                         meetings.push(newMeetingEntry)
 
-                        // Keep only last 10 transcripts
-                        if (meetings.length > 10) {
-                            meetings = meetings.slice(-10)
-                        }
-
-                        // Save updated recent transcripts
+                        // Save updated meetings — kept unbounded (see manifest's
+                        // "unlimitedStorage" permission, which exempts chrome.storage.local
+                        // from its default 5MB quota so this never needs trimming).
                         chrome.storage.local.set({ meetings: meetings }, function () {
                             console.log("Last meeting picked up")
                             resolve("Last meeting picked up")
@@ -159,26 +157,24 @@ export function recoverLastMeeting() {
 }
 
 /**
- * Opens the Obsidian handoff page (extension/obsidian/handoff.html) for a meeting.
- * Fire-and-forget from the caller's perspective — this must never be awaited in a way
- * that blocks or fails the existing download/webhook exporters, since the handoff page
- * may perform a slow local LLM call (Phase 4) and Obsidian may not even be installed.
+ * Opens the Obsidian handoff page (extension/obsidian/handoff.html) for a meeting that
+ * just ended, if `autoSaveToObsidianAfterMeeting` is on. Fire-and-forget from the
+ * caller's perspective — this must never be awaited in a way that blocks or fails the
+ * existing download/webhook exporters, since the handoff page may perform a slow local
+ * LLM call (Phase 4) and Obsidian may not even be installed.
  *
- * When `auto` is true (called right after a meeting ends), the handoff only opens if
- * `autoSaveToObsidianAfterMeeting` is on. When `auto` is false (a manual "Save to
- * Obsidian" click from the history page), it opens whenever a vault name is configured,
- * regardless of the auto-save toggle.
+ * This is now the ONLY way a handoff tab gets opened — a manual "Save to Obsidian" click
+ * on the Meetings page runs the same underlying flow in place instead (see
+ * extension/obsidian/save-flow.js, called directly from src/meetings/agenda/
+ * MeetingDetail.tsx), since a Meetings page tab is already open and focused at that
+ * point and doesn't need a disposable tab of its own.
  * @param {Meeting} meeting
- * @param {boolean} auto
- * @returns {Promise<{ opened: boolean, reason?: "obsidian_not_configured" | "auto_save_disabled" }>}
+ * @returns {Promise<{ opened: boolean }>}
  */
-export function triggerObsidianHandoffIfConfigured(meeting, auto) {
+export function triggerObsidianHandoffIfConfigured(meeting) {
     return getObsidianSettings().then((settings) => {
-        if (!settings.obsidianVaultName) {
-            return { opened: false, reason: /** @type {const} */ ("obsidian_not_configured") }
-        }
-        if (auto && !settings.autoSaveToObsidianAfterMeeting) {
-            return { opened: false, reason: /** @type {const} */ ("auto_save_disabled") }
+        if (!settings.autoSaveToObsidianAfterMeeting) {
+            return { opened: false }
         }
 
         const meetingId = getMeetingId(meeting)
@@ -190,10 +186,54 @@ export function triggerObsidianHandoffIfConfigured(meeting, auto) {
                 // the "extension/" prefix to match, unlike pre-Phase-5 where the unpacked root was
                 // extension/ itself and no prefix was needed.
                 chrome.tabs.create({
-                    url: chrome.runtime.getURL(`extension/obsidian/handoff.html?meetingId=${encodeURIComponent(meetingId)}&auto=${auto}`)
+                    url: chrome.runtime.getURL(`extension/obsidian/handoff.html?meetingId=${encodeURIComponent(meetingId)}`)
                 })
                 return { opened: true }
             })
+    })
+}
+
+/**
+ * On-demand LLM summarization for one meeting, independent of the Obsidian handoff —
+ * this is what the "Summarize" row action calls, primarily useful when
+ * `obsidianLlmAutoRun` is off (so the handoff page skips summarizing automatically) but
+ * also works any time a meeting doesn't have a cached summary yet. Caches the result the
+ * same way markSummaryCache() does in src/obsidian-handoff/App.tsx. Never throws —
+ * enrichWithLlm() is documented to never throw, and every other failure mode here
+ * (missing meeting, LLM disabled) resolves to `{success: false, message}` instead.
+ * @param {string} meetingId
+ * @returns {Promise<{success: boolean, message?: string}>}
+ */
+export function summarizeMeetingNow(meetingId) {
+    return Promise.all([getMeetingById(meetingId), getObsidianSettings()]).then(([meeting, settings]) => {
+        if (!meeting) {
+            return { success: false, message: "Meeting not found." }
+        }
+        if (!settings.obsidianUseLlm) {
+            return { success: false, message: "Local LLM summary enrichment is off — enable it in Connectors first." }
+        }
+
+        return enrichWithLlm(meeting, settings).then((result) => {
+            if (!result) {
+                return { success: false, message: "Local LLM unavailable or returned nothing usable." }
+            }
+            if ("contextExceeded" in result) {
+                return {
+                    success: false,
+                    message:
+                        `This meeting needs about ${result.requiredTokens.toLocaleString()} tokens of context, ` +
+                        `but the model is loaded with only ${result.loadedContextLength.toLocaleString()}. ` +
+                        `Load it with more context in LM Studio and try again.`,
+                }
+            }
+
+            return updateMeetingById(meetingId, () => ({
+                llmSummaryMarkdown: result.summaryMarkdown,
+                llmSummaryIncludesTranscript: result.includesTranscript,
+                llmSummaryIncludesChatMessages: result.includesChatMessages,
+                ...(result.title ? { llmSummaryTitle: result.title } : {}),
+            })).then(() => ({ success: true }))
+        })
     })
 }
 

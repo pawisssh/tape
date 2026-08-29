@@ -1,7 +1,6 @@
 import { ALARM_NAME } from "./config.js"
-import { processLastMeeting, recoverLastMeeting, triggerObsidianHandoffIfConfigured } from "./meetings.js"
+import { processLastMeeting, recoverLastMeeting, summarizeMeetingNow } from "./meetings.js"
 import { downloadTranscript, postTranscriptToWebhook } from "./exporters.js"
-import { getMeetingById } from "../obsidian/store.js"
 import {
     getPermissionStatus,
     requestPlatformPermission,
@@ -251,32 +250,12 @@ chrome.runtime.onMessage.addListener(function (messageUnTyped, sender, sendRespo
         })
     }
 
-    if (message.type === "save_meeting_to_obsidian") {
+    if (message.type === "summarize_meeting_now") {
         if (typeof message.meetingId === "string" && message.meetingId) {
-            getMeetingById(message.meetingId).then((meeting) => {
-                if (!meeting) {
-                    /** @type {ExtensionResponse} */
-                    const response = { success: false, message: { errorCode: "017", errorMessage: "Meeting not found for given id" } }
-                    sendResponse(response)
-                    return
-                }
-
-                triggerObsidianHandoffIfConfigured(meeting, false).then((result) => {
-                    if (result.opened) {
-                        /** @type {ExtensionResponse} */
-                        const response = { success: true }
-                        sendResponse(response)
-                    }
-                    else {
-                        /** @type {ExtensionResponse} */
-                        const response = { success: false, message: { errorCode: "018", errorMessage: "Obsidian vault not configured" } }
-                        sendResponse(response)
-                    }
-                }).catch((error) => {
-                    /** @type {ExtensionResponse} */
-                    const response = { success: false, message: { errorCode: "018", errorMessage: String(error) } }
-                    sendResponse(response)
-                })
+            summarizeMeetingNow(message.meetingId).then((result) => {
+                /** @type {ExtensionResponse} */
+                const response = { success: result.success, message: result.message }
+                sendResponse(response)
             })
         }
         else {
@@ -390,6 +369,15 @@ chrome.runtime.onInstalled.addListener(() => {
         })
 
         checkAndCreateAlarm()
+    })
+})
+
+// Recover a meeting stranded mid-transcript by a browser crash/relaunch, without waiting
+// for the user to either join another meeting (which already triggers recovery, see each
+// platform's content-script init) or open the Meetings page.
+chrome.runtime.onStartup.addListener(() => {
+    recoverLastMeeting().catch((error) => {
+        console.error("Startup meeting recovery error:", error)
     })
 })
 

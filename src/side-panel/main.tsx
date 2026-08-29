@@ -1,7 +1,10 @@
 import { StrictMode } from "react"
 import { createRoot } from "react-dom/client"
 import App from "./App"
+import { watchSystemTheme } from "../lib/system-theme"
 import "../styles/globals.css"
+
+watchSystemTheme()
 
 const rootEl = document.getElementById("root")
 if (rootEl) {

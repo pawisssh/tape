@@ -8,7 +8,9 @@
 // (tests/store.test.mjs) install a minimal in-memory fake of chrome.storage first.
 
 import { DEFAULT_FILENAME_TEMPLATE } from "./markdown.js"
-import { DEFAULT_LLM_ENDPOINT, DEFAULT_LLM_MODEL, DEFAULT_LLM_TIMEOUT_MS } from "./llm.js"
+import { DEFAULT_LLM_TIMEOUT_MS } from "./llm.js"
+import { getProviders, getActiveModel } from "./providers.js"
+import { INTERPRETER_SYSTEM_PROMPT } from "./interpreter.js"
 
 const CLIPBOARD_LOCK_KEY = "obsidianClipboardLock"
 
@@ -21,8 +23,8 @@ const CLIPBOARD_LOCK_TTL_MS = 15000
  * Stable identifier for a Meeting record. We reuse `meetingStartTimestamp` (an ISO
  * timestamp, millisecond precision, set once by the content script when the meeting
  * starts) rather than inventing a new id field: it's already required on every Meeting,
- * it doesn't shift when the `meetings` array is trimmed to the last 10 or a row is
- * deleted, and a collision would require two meetings starting in the same millisecond —
+ * it doesn't shift when a row is deleted from the `meetings` array, and a collision
+ * would require two meetings starting in the same millisecond —
  * impossible here since only one meeting can be tracked at a time (see the
  * `meetingTabId: "processing"` sentinel in background-script/index.js).
  * @param {Meeting} meeting
@@ -82,33 +84,59 @@ export function updateMeetingById(meetingId, updater) {
 }
 
 /**
+ * @returns {Promise<{endpoint: string, model: string, apiKey: string | undefined}>}
+ */
+function resolveActiveLlmConnection() {
+    return Promise.all([getProviders(), getActiveModel()]).then(([providers, activeModel]) => {
+        const provider = activeModel ? providers.find((p) => p.id === activeModel.providerId) : undefined
+        if (!provider || !activeModel) {
+            return { endpoint: "", model: "", apiKey: undefined }
+        }
+        return {
+            endpoint: `${provider.baseUrl}/chat/completions`,
+            model: activeModel.modelId,
+            apiKey: provider.apiKey || undefined,
+        }
+    })
+}
+
+/**
  * @returns {Promise<ObsidianSettings>}
  */
 export function getObsidianSettings() {
-    return new Promise((resolve) => {
-        chrome.storage.sync.get([
-            "autoSaveToObsidianAfterMeeting",
-            "obsidianVaultName",
-            "obsidianFolder",
-            "obsidianFileNameTemplate",
-            "obsidianUseLlm",
-            "obsidianLlmEndpoint",
-            "obsidianLlmModel",
-            "obsidianLlmTimeoutMs",
-        ], function (resultSyncUntyped) {
-            const resultSync = /** @type {ResultSync} */ (resultSyncUntyped)
-            resolve({
-                autoSaveToObsidianAfterMeeting: resultSync.autoSaveToObsidianAfterMeeting === true,
-                obsidianVaultName: resultSync.obsidianVaultName || "",
-                obsidianFolder: resultSync.obsidianFolder || "",
-                obsidianFileNameTemplate: resultSync.obsidianFileNameTemplate || DEFAULT_FILENAME_TEMPLATE,
-                obsidianUseLlm: resultSync.obsidianUseLlm === true,
-                obsidianLlmEndpoint: resultSync.obsidianLlmEndpoint || DEFAULT_LLM_ENDPOINT,
-                obsidianLlmModel: resultSync.obsidianLlmModel || DEFAULT_LLM_MODEL,
-                obsidianLlmTimeoutMs: resultSync.obsidianLlmTimeoutMs || DEFAULT_LLM_TIMEOUT_MS,
+    return Promise.all([
+        new Promise((resolve) => {
+            chrome.storage.sync.get([
+                "obsidianVaultName",
+                "obsidianFolder",
+                "obsidianFileNameTemplate",
+                "obsidianUseLlm",
+                "obsidianLlmTimeoutMs",
+                "obsidianLlmAutoRun",
+                "obsidianLlmSummaryTemplates",
+                "obsidianLlmSystemPrompt",
+            ], function (resultSyncUntyped) {
+                resolve(/** @type {ResultSync} */ (resultSyncUntyped))
             })
-        })
-    })
+        }),
+        resolveActiveLlmConnection(),
+    ]).then(([resultSync, connection]) => ({
+        // No separate toggle — auto-save turns on the moment a vault name is configured
+        // (folder/filename template both have working defaults, so vault name is the
+        // only thing that actually needs to be "correct" for a handoff to make sense).
+        autoSaveToObsidianAfterMeeting: !!resultSync.obsidianVaultName,
+        obsidianVaultName: resultSync.obsidianVaultName || "",
+        obsidianFolder: resultSync.obsidianFolder || "",
+        obsidianFileNameTemplate: resultSync.obsidianFileNameTemplate || DEFAULT_FILENAME_TEMPLATE,
+        obsidianUseLlm: resultSync.obsidianUseLlm === true,
+        obsidianLlmEndpoint: connection.endpoint,
+        obsidianLlmModel: connection.model,
+        obsidianLlmApiKey: connection.apiKey,
+        obsidianLlmAutoRun: resultSync.obsidianLlmAutoRun !== false,
+        obsidianLlmSummaryTemplates: resultSync.obsidianLlmSummaryTemplates || [],
+        obsidianLlmTimeoutMs: resultSync.obsidianLlmTimeoutMs || DEFAULT_LLM_TIMEOUT_MS,
+        obsidianLlmSystemPrompt: resultSync.obsidianLlmSystemPrompt || INTERPRETER_SYSTEM_PROMPT,
+    }))
 }
 
 /**

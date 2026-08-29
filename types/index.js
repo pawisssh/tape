@@ -33,6 +33,9 @@
  * @typedef {"auto" | "manual"} OperationMode mode of the extension which decides whether to automatically capture transcripts or let the user decide per meeting basis
  */
 /**
+ * @typedef {boolean} AutoCaptureEnabled Master on/off switch for meeting detection/auto-join across all platforms, surfaced as the toggle next to the logo in the Meetings page sidebar (added in the visual redesign). Separate from per-platform enablement (wantGoogleMeet/wantTeams/wantZoom) and from OperationMode (which only controls whether captions auto-toggle *within* an already-detected meeting). Defaults to true.
+ */
+/**
  * @typedef {boolean} HideCaptions hide the captions on the UI by changing height and opacity
  */
 /**
@@ -100,6 +103,10 @@
  * @property {ObsidianSaveStatus} [obsidianSaveStatus] status of handoff to Obsidian (added in Phase 3, additive/optional — absent means Obsidian export was never attempted for this meeting)
  * @property {string} [llmSummaryMarkdown] rendered LLM summary markdown fragment, cached from the most recent successful enrichment (added in Phase 4, additive/optional — absent means LLM enrichment was never attempted or never succeeded for this meeting)
  * @property {string} [llmSummaryTitle] LLM-suggested title from the most recent successful enrichment (added in Phase 4, additive/optional)
+ * @property {boolean} [llmSummaryIncludesTranscript] whether llmSummaryMarkdown already embeds a {{transcript}} section of its own, cached alongside it so a later Obsidian export that reuses this cached summary (see src/obsidian-handoff/App.tsx) knows not to append a second, redundant Transcript section. Additive/optional — absent is treated as false.
+ * @property {boolean} [llmSummaryIncludesChatMessages] same as llmSummaryIncludesTranscript, for a {{chatMessages}} section. Additive/optional — absent is treated as false.
+ * @property {string} [templateOverrideId] id of a SummaryTemplate (or the literal "default") the user explicitly picked for THIS meeting via the header toolbar's Follow-up picker (src/meetings/agenda/FollowUpTemplatePicker.tsx), overriding resolveTemplateForTitle()'s automatic keyword match — see extension/obsidian/llm.js's enrichWithLlm(). Added in the visual redesign, additive/optional — absent means "use automatic resolution as before." A stale id (template since deleted) falls back to automatic resolution rather than erroring.
+ * @property {string} [userNotes] freeform per-meeting notes the user typed directly in the Notes tab — no AI involvement, plain user-authored text. Added in the visual redesign, additive/optional — absent/empty means no notes. Exported to Obsidian as the last section of the note, after Transcript/Chat messages — see extension/obsidian/markdown.js's renderNotesSection()/buildMarkdown().
  */
 
 /** @typedef {Object} StateTranscriptBlock
@@ -131,11 +138,11 @@
  */
 /**
  * @typedef {Object} ExtensionMessage Message sent by the calling script
- * @property {"new_meeting_started" | "meeting_ended" | "download_transcript_at_index" | "post_webhook_at_index" | "recover_last_meeting" | "get_platform_enablement_status" | "get_platform_permission_status" | "enable_platform" | "disable_platform" | "open_popup" | "open_side_panel" | "broadcast_live_buffer" | "save_meeting_to_obsidian"} type type of message
+ * @property {"new_meeting_started" | "meeting_ended" | "download_transcript_at_index" | "post_webhook_at_index" | "recover_last_meeting" | "get_platform_enablement_status" | "get_platform_permission_status" | "enable_platform" | "disable_platform" | "open_popup" | "open_side_panel" | "broadcast_live_buffer" | "summarize_meeting_now"} type type of message
  * @property {number} [index] index of the meeting to process
  * @property {Platform | Platform[]} [platform] index of the meeting to process
  * @property {StateTranscriptBlock} [stateTranscriptBlock]
- * @property {string} [meetingId] stable id (see obsidian/store.js getMeetingId) of the meeting to act on — used by "save_meeting_to_obsidian" (added in Phase 3)
+ * @property {string} [meetingId] stable id (see obsidian/store.js getMeetingId) of the meeting to act on — used by "summarize_meeting_now" (a direct Save-to-Obsidian message existed here through Phase 3/5, removed once Run started calling extension/obsidian/save-flow.js in place instead of messaging the background script)
 */
 
 /**
@@ -165,6 +172,8 @@
  * @property {ChatMessages} chatMessages
  * @property {IsDeferredUpdatedAvailable | undefined} isDeferredUpdatedAvailable
  * @property {Meeting[] | undefined} meetings
+ * @property {LlmProviderConfig[] | undefined} obsidianLlmProviders saved LLM connectors (see extension/obsidian/providers.js) — local, not sync, since apiKey is a secret
+ * @property {ObsidianLlmActiveModel | undefined} obsidianLlmActiveModel which provider+model is currently selected to summarize with
  */
 
 // SYNC CHROME STORAGE VARIABLES
@@ -173,20 +182,21 @@
  * @property {AutoPostWebhookAfterMeeting} autoPostWebhookAfterMeeting
  * @property {AutoDownloadFileAfterMeeting} autoDownloadFileAfterMeeting
  * @property {OperationMode} operationMode
+ * @property {AutoCaptureEnabled | undefined} autoCaptureEnabled added in the visual redesign
  * @property {HideCaptions} hideCaptions
  * @property {WebhookBodyType} webhookBodyType
  * @property {WebhookUrl} webhookUrl
  * @property {WantGoogleMeet} wantGoogleMeet
  * @property {WantTeams} wantTeams
  * @property {WantZoom} wantZoom
- * @property {AutoSaveToObsidianAfterMeeting | undefined} autoSaveToObsidianAfterMeeting added in Phase 3
  * @property {ObsidianVaultName | undefined} obsidianVaultName added in Phase 3
  * @property {ObsidianFolder | undefined} obsidianFolder added in Phase 3
  * @property {ObsidianFileNameTemplate | undefined} obsidianFileNameTemplate added in Phase 3
  * @property {ObsidianUseLlm | undefined} obsidianUseLlm added in Phase 4
- * @property {ObsidianLlmEndpoint | undefined} obsidianLlmEndpoint added in Phase 4
- * @property {ObsidianLlmModel | undefined} obsidianLlmModel added in Phase 4
  * @property {ObsidianLlmTimeoutMs | undefined} obsidianLlmTimeoutMs added in Phase 4
+ * @property {ObsidianLlmAutoRun | undefined} obsidianLlmAutoRun
+ * @property {SummaryTemplate[] | undefined} obsidianLlmSummaryTemplates
+ * @property {ObsidianLlmSystemPrompt | undefined} obsidianLlmSystemPrompt
 */
 
 

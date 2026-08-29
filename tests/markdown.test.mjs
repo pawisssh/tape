@@ -7,11 +7,16 @@ import {
     sanitizeFilenameComponent,
     groupTranscriptBySpeaker,
     renderTranscriptSection,
+    renderTranscriptBody,
     renderChatSection,
+    renderChatBody,
+    renderNotesSection,
     toYamlString,
     getParticipants,
     formatElapsedTime,
     DEFAULT_FILENAME_TEMPLATE,
+    renderFrontmatterField,
+    mergeFrontmatterFields,
 } from "../extension/obsidian/markdown.js"
 
 /** @returns {import("../types/index.js").Meeting} */
@@ -75,13 +80,74 @@ describe("toYamlString / frontmatter YAML-injection safety", () => {
         assert.ok(!titleLine.includes("\n"))
     })
 
-    test("buildFrontmatter includes title/date/start/end/duration/software/participants", () => {
+    test("buildFrontmatter includes title/date/start/end/duration/platform/participants", () => {
         const meeting = makeMeeting()
         const fm = buildFrontmatter(meeting)
-        for (const key of ["title:", "date:", "start:", "end:", "duration:", "software:", "participants:"]) {
+        for (const key of ["title:", "date:", "start:", "end:", "duration:", "platform:", "participants:"]) {
             assert.ok(fm.includes(key), `frontmatter missing ${key}`)
         }
         assert.ok(fm.includes("45m"), "duration should be computed as 45m")
+    })
+
+    test("omitting resolvedProperties (or passing []) leaves output byte-identical to the baseline-only path", () => {
+        const meeting = makeMeeting()
+        assert.equal(buildFrontmatter(meeting), buildFrontmatter(meeting, { resolvedProperties: [] }))
+    })
+})
+
+describe("renderFrontmatterField", () => {
+    test("text/date/number/checkbox render as a single quoted scalar line", () => {
+        assert.deepEqual(renderFrontmatterField({ name: "title", type: "text", value: "Team sync" }), ['title: "Team sync"'])
+        assert.equal(renderFrontmatterField({ name: "count", type: "number", value: "3" })[0], 'count: "3"')
+    })
+
+    test("multitext renders a YAML sequence, one quoted item per line", () => {
+        const lines = renderFrontmatterField({ name: "tags", type: "multitext", value: ["a", "b"] })
+        assert.deepEqual(lines, ["tags:", '  - "a"', '  - "b"'])
+    })
+
+    test("multitext with an empty array renders 'name: []' inline, not a header with no items", () => {
+        assert.deepEqual(renderFrontmatterField({ name: "tags", type: "multitext", value: [] }), ["tags: []"])
+    })
+
+    test("multitext given a plain (non-array) string splits it on commas", () => {
+        const lines = renderFrontmatterField({ name: "tags", type: "multitext", value: "clippings, facebook" })
+        assert.deepEqual(lines, ["tags:", '  - "clippings"', '  - "facebook"'])
+    })
+
+    test("a scalar type given an array value joins with ', ' instead of throwing", () => {
+        const lines = renderFrontmatterField({ name: "title", type: "text", value: ["a", "b"] })
+        assert.deepEqual(lines, ['title: "a, b"'])
+    })
+
+    test("never throws on null/undefined value", () => {
+        assert.doesNotThrow(() => renderFrontmatterField({ name: "x", type: "text", value: /** @type {any} */ (null) }))
+        assert.doesNotThrow(() => renderFrontmatterField({ name: "x", type: "text", value: /** @type {any} */ (undefined) }))
+    })
+})
+
+describe("mergeFrontmatterFields", () => {
+    const baseline = [
+        { name: "title", type: "text", value: "Old title" },
+        { name: "date", type: "date", value: "2026-01-01" },
+    ]
+
+    test("an overlay entry replaces a same-named baseline entry in place, preserving baseline order", () => {
+        const merged = mergeFrontmatterFields(baseline, [{ name: "title", type: "text", value: "New title" }])
+        assert.deepEqual(merged, [
+            { name: "title", type: "text", value: "New title" },
+            { name: "date", type: "date", value: "2026-01-01" },
+        ])
+    })
+
+    test("an overlay name not in the baseline is appended in overlay order", () => {
+        const merged = mergeFrontmatterFields(baseline, [{ name: "topic", type: "text", value: "Roadmap" }])
+        assert.equal(merged.length, 3)
+        assert.equal(merged[2].name, "topic")
+    })
+
+    test("an empty overlay leaves the baseline unchanged", () => {
+        assert.deepEqual(mergeFrontmatterFields(baseline, []), baseline)
     })
 })
 
@@ -177,6 +243,43 @@ describe("renderTranscriptSection / renderChatSection", () => {
     })
 })
 
+describe("renderTranscriptBody / renderChatBody", () => {
+    test("renderTranscriptBody has no '## Transcript' heading of its own", () => {
+        const body = renderTranscriptBody(makeMeeting().transcript)
+        assert.ok(!body.includes("## Transcript"))
+        assert.ok(body.includes("**Priya**"))
+    })
+
+    test("renderTranscriptSection is exactly the heading plus renderTranscriptBody", () => {
+        const transcript = makeMeeting().transcript
+        assert.equal(renderTranscriptSection(transcript), `## Transcript\n\n${renderTranscriptBody(transcript)}`)
+    })
+
+    test("renderChatBody has no '## Chat messages' heading, empty string when no messages", () => {
+        assert.equal(renderChatBody([]), "")
+        const body = renderChatBody([{ personName: "Mo", timestamp: "2026-08-26T10:05:00.000Z", chatMessageText: "hi" }])
+        assert.ok(!body.includes("## Chat messages"))
+        assert.ok(body.includes("hi"))
+    })
+
+    test("renderChatSection is exactly the heading plus renderChatBody when non-empty", () => {
+        const chatMessages = [{ personName: "Mo", timestamp: "2026-08-26T10:05:00.000Z", chatMessageText: "hi" }]
+        assert.equal(renderChatSection(chatMessages), `## Chat messages\n\n${renderChatBody(chatMessages)}`)
+    })
+})
+
+describe("renderNotesSection", () => {
+    test("empty/undefined/whitespace-only input renders nothing", () => {
+        assert.equal(renderNotesSection(""), "")
+        assert.equal(renderNotesSection(undefined), "")
+        assert.equal(renderNotesSection("   \n  "), "")
+    })
+
+    test("non-empty notes render a trimmed ## Notes section", () => {
+        assert.equal(renderNotesSection("  Some notes here.  "), "## Notes\n\nSome notes here.")
+    })
+})
+
 describe("buildMarkdown", () => {
     test("omits the Chat messages section when there are no chat messages", () => {
         const md = buildMarkdown(makeMeeting({ chatMessages: [] }))
@@ -194,6 +297,53 @@ describe("buildMarkdown", () => {
     test("starts with YAML frontmatter fence", () => {
         const md = buildMarkdown(makeMeeting())
         assert.ok(md.startsWith("---\n"))
+    })
+
+    test("suppressTranscriptSection skips the automatic Transcript append", () => {
+        const md = buildMarkdown(makeMeeting(), { summaryMarkdown: "custom body", suppressTranscriptSection: true })
+        assert.ok(!md.includes("## Transcript"))
+        assert.ok(md.includes("custom body"))
+    })
+
+    test("suppressChatSection skips the automatic Chat messages append even when non-empty", () => {
+        const md = buildMarkdown(
+            makeMeeting({ chatMessages: [{ personName: "Mo", timestamp: "2026-08-26T10:05:00.000Z", chatMessageText: "hi" }] }),
+            { summaryMarkdown: "custom body", suppressChatSection: true },
+        )
+        assert.ok(!md.includes("## Chat messages"))
+    })
+
+    test("omitting the suppress flags (or passing options without them) still appends both, unchanged", () => {
+        const withNoOptions = buildMarkdown(makeMeeting())
+        const withEmptyOptions = buildMarkdown(makeMeeting(), {})
+        assert.equal(withNoOptions, withEmptyOptions)
+        assert.ok(withNoOptions.includes("## Transcript"))
+    })
+
+    test("Notes renders last, after Transcript and Chat messages", () => {
+        const md = buildMarkdown(
+            makeMeeting({
+                chatMessages: [{ personName: "Mo", timestamp: "2026-08-26T10:05:00.000Z", chatMessageText: "hi" }],
+                userNotes: "My own notes.",
+            }),
+        )
+        const transcriptIdx = md.indexOf("## Transcript")
+        const chatIdx = md.indexOf("## Chat messages")
+        const notesIdx = md.indexOf("## Notes")
+        assert.ok(transcriptIdx !== -1 && chatIdx !== -1 && notesIdx !== -1)
+        assert.ok(chatIdx > transcriptIdx)
+        assert.ok(notesIdx > chatIdx)
+        assert.ok(md.includes("My own notes."))
+    })
+
+    test("omits the Notes section when userNotes is empty/absent", () => {
+        const md = buildMarkdown(makeMeeting())
+        assert.ok(!md.includes("## Notes"))
+    })
+
+    test("suppressNotesSection skips the automatic Notes append even when non-empty", () => {
+        const md = buildMarkdown(makeMeeting({ userNotes: "hidden" }), { suppressNotesSection: true })
+        assert.ok(!md.includes("## Notes"))
     })
 })
 
@@ -233,9 +383,9 @@ describe("filename sanitization", () => {
         assert.ok(!filename.includes("/"), `filename should not contain '/': ${filename}`)
     })
 
-    test("expands {{date}} {{time}} {{title}} {{software}} tokens", () => {
+    test("expands {{date}} {{time}} {{title}} {{platform}} tokens", () => {
         const meeting = makeMeeting()
-        const filename = buildFilename("{{date}} {{time}} {{title}} {{software}}", meeting)
+        const filename = buildFilename("{{date}} {{time}} {{title}} {{platform}}", meeting)
         assert.ok(filename.includes("Team sync"))
         assert.ok(filename.includes("Google Meet"))
         assert.ok(filename.endsWith(".md"))
@@ -244,7 +394,22 @@ describe("filename sanitization", () => {
     test("falls back to the default template when none is provided", () => {
         const meeting = makeMeeting()
         const filename = buildFilename(undefined, meeting)
+        // No aiTitle supplied -> falls back to the raw meeting title, but the default
+        // template's quoted segment still applies its own |kebab filter to it.
+        assert.ok(filename.includes("team-sync"))
+    })
+
+    test("a bare variable (no filters) is unaffected by another segment's filter in the same template", () => {
+        const meeting = makeMeeting()
+        const filename = buildFilename('{{title}}-{{"x"|kebab}}', meeting, { aiTitle: "Some Title" })
         assert.ok(filename.includes("Team sync"))
+        assert.ok(filename.includes("some-title"))
+    })
+
+    test('a |kebab filter on the quoted token lowercases and hyphenates the AI title', () => {
+        const meeting = makeMeeting()
+        const filename = buildFilename('{{"x"|kebab}}', meeting, { aiTitle: "Coni Wireframe UX Review" })
+        assert.equal(filename, "coni-wireframe-ux-review.md")
     })
 
     test("a title containing '/ : # [ ]' produces a safe, non-empty filename", () => {
@@ -284,5 +449,46 @@ describe("filename sanitization", () => {
         const meeting = makeMeeting({ meetingTitle: "///???***" })
         const filename = buildFilename("{{title}}", meeting)
         assert.ok(filename.length > ".md".length)
+    })
+})
+
+describe("buildFilename — quoted AI-title token", () => {
+    test('a {{"..."}} token resolves to options.aiTitle when provided', () => {
+        const meeting = makeMeeting()
+        const filename = buildFilename('{{"anything here"}}', meeting, { aiTitle: "Q3 roadmap review" })
+        assert.equal(filename, "Q3 roadmap review.md")
+    })
+
+    test('a {{"..."}} token falls back to the meeting title when aiTitle is absent', () => {
+        const meeting = makeMeeting()
+        const filename = buildFilename('{{"anything here"}}', meeting)
+        assert.equal(filename, "Team sync.md")
+    })
+
+    test('a {{"..."}} token falls back to the meeting title when aiTitle is empty', () => {
+        const meeting = makeMeeting()
+        const filename = buildFilename('{{"anything here"}}', meeting, { aiTitle: "" })
+        assert.equal(filename, "Team sync.md")
+    })
+
+    test("aiTitle is sanitized the same way as the other tokens", () => {
+        const meeting = makeMeeting()
+        const filename = buildFilename('{{"x"}}', meeting, { aiTitle: "Q3/Q4: planning?" })
+        assert.ok(!filename.slice(0, -3).includes("/"))
+        assert.ok(!filename.slice(0, -3).includes(":"))
+    })
+
+    test("coexists with the fixed tokens in the same template", () => {
+        const meeting = makeMeeting()
+        const filename = buildFilename('{{date}} - {{"x"}}', meeting, { aiTitle: "Roadmap review" })
+        assert.ok(filename.includes("Roadmap review"))
+        assert.ok(filename.includes("2026-08-26"))
+    })
+
+    test("a very long aiTitle is truncated while preserving the .md extension", () => {
+        const meeting = makeMeeting()
+        const filename = buildFilename('{{"x"}}', meeting, { aiTitle: "x".repeat(500) })
+        assert.ok(filename.endsWith(".md"))
+        assert.ok(filename.length <= 200, `filename too long: ${filename.length}`)
     })
 })

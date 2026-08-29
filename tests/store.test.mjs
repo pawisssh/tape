@@ -56,6 +56,7 @@ const {
     acquireClipboardLock,
     releaseClipboardLock,
 } = await import("../extension/obsidian/store.js")
+const { DEFAULT_FILENAME_TEMPLATE } = await import("../extension/obsidian/markdown.js")
 
 beforeEach(() => {
     installFakeChrome()
@@ -123,22 +124,23 @@ describe("getObsidianSettings / setObsidianSettings", () => {
         assert.equal(settings.autoSaveToObsidianAfterMeeting, false)
         assert.equal(settings.obsidianVaultName, "")
         assert.equal(settings.obsidianFolder, "")
-        assert.equal(settings.obsidianFileNameTemplate, "{{date}} - {{title}}")
+        assert.equal(settings.obsidianFileNameTemplate, DEFAULT_FILENAME_TEMPLATE)
         assert.equal(settings.obsidianUseLlm, false)
-        assert.equal(settings.obsidianLlmEndpoint, "http://localhost:1234/v1/chat/completions")
+        // No provider/model configured yet — resolves to empty, not a hardcoded default
+        // server. See "resolves the active provider" below for the configured case.
+        assert.equal(settings.obsidianLlmEndpoint, "")
         assert.equal(settings.obsidianLlmModel, "")
-        assert.equal(settings.obsidianLlmTimeoutMs, 90000)
+        assert.equal(settings.obsidianLlmApiKey, undefined)
+        assert.equal(settings.obsidianLlmTimeoutMs, 300000)
+        assert.deepEqual(settings.obsidianLlmSummaryTemplates, [])
     })
 
-    test("round-trips saved settings", async () => {
+    test("round-trips saved sync-only settings", async () => {
         await setObsidianSettings({
-            autoSaveToObsidianAfterMeeting: true,
             obsidianVaultName: "My Vault",
             obsidianFolder: "Meetings",
             obsidianFileNameTemplate: "{{title}}",
             obsidianUseLlm: true,
-            obsidianLlmEndpoint: "http://localhost:11434/v1/chat/completions",
-            obsidianLlmModel: "llama3.1",
             obsidianLlmTimeoutMs: 30000,
         })
         const settings = await getObsidianSettings()
@@ -147,9 +149,40 @@ describe("getObsidianSettings / setObsidianSettings", () => {
         assert.equal(settings.obsidianFolder, "Meetings")
         assert.equal(settings.obsidianFileNameTemplate, "{{title}}")
         assert.equal(settings.obsidianUseLlm, true)
-        assert.equal(settings.obsidianLlmEndpoint, "http://localhost:11434/v1/chat/completions")
-        assert.equal(settings.obsidianLlmModel, "llama3.1")
         assert.equal(settings.obsidianLlmTimeoutMs, 30000)
+    })
+
+    test("autoSaveToObsidianAfterMeeting has no toggle of its own — it tracks whether a vault name is set", async () => {
+        assert.equal((await getObsidianSettings()).autoSaveToObsidianAfterMeeting, false)
+
+        await setObsidianSettings({ obsidianVaultName: "My Vault" })
+        assert.equal((await getObsidianSettings()).autoSaveToObsidianAfterMeeting, true)
+
+        await setObsidianSettings({ obsidianVaultName: "" })
+        assert.equal((await getObsidianSettings()).autoSaveToObsidianAfterMeeting, false)
+    })
+
+    test("resolves obsidianLlmEndpoint/Model/ApiKey from the saved provider + active model", async () => {
+        fakeStorageState.local.obsidianLlmProviders = [
+            { id: "p1", type: "ollama", name: "Ollama", baseUrl: "http://localhost:11434/v1" },
+            { id: "p2", type: "custom", name: "OpenAI", baseUrl: "https://api.openai.com/v1", apiKey: "sk-test" },
+        ]
+        fakeStorageState.local.obsidianLlmActiveModel = { providerId: "p2", modelId: "gpt-4o-mini" }
+
+        const settings = await getObsidianSettings()
+        assert.equal(settings.obsidianLlmEndpoint, "https://api.openai.com/v1/chat/completions")
+        assert.equal(settings.obsidianLlmModel, "gpt-4o-mini")
+        assert.equal(settings.obsidianLlmApiKey, "sk-test")
+    })
+
+    test("resolves to empty when the active model points at a provider that no longer exists", async () => {
+        fakeStorageState.local.obsidianLlmProviders = []
+        fakeStorageState.local.obsidianLlmActiveModel = { providerId: "gone", modelId: "whatever" }
+
+        const settings = await getObsidianSettings()
+        assert.equal(settings.obsidianLlmEndpoint, "")
+        assert.equal(settings.obsidianLlmModel, "")
+        assert.equal(settings.obsidianLlmApiKey, undefined)
     })
 })
 

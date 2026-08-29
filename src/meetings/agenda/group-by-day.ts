@@ -3,6 +3,7 @@ import { isToday, isYesterday, format, startOfDay } from "date-fns"
 export interface MeetingDayGroup {
     key: string
     label: string
+    isToday: boolean
     meetings: { meeting: Meeting; index: number }[]
 }
 
@@ -25,7 +26,7 @@ export function groupMeetingsByDay(meetings: { meeting: Meeting; index: number }
         const key = date.toISOString()
         let group = groups.get(key)
         if (!group) {
-            group = { key, label: dayLabel(date), meetings: [] }
+            group = { key, label: dayLabel(date), isToday: isToday(date), meetings: [] }
             groups.set(key, group)
         }
         group.meetings.push(entry)

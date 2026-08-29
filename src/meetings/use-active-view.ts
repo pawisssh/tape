@@ -4,7 +4,7 @@
 // deep-links (and the browser back/forward buttons) still land on the right view.
 import { useCallback, useEffect, useState } from "react"
 
-export const VIEWS = ["meetings", "platforms", "integrations", "connectors", "settings"] as const
+export const VIEWS = ["meetings", "integrations", "templates", "settings"] as const
 export type ActiveView = (typeof VIEWS)[number]
 
 function viewFromHash(hash: string): ActiveView {

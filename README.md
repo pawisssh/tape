@@ -64,7 +64,7 @@ This could happen when:
 2. Any unexpected events like network drop, browser crashes etc.
 
 When this happens, it might be possible to recover the transcript, but recovery should be done before starting another meeting.
-- Open the extension and click on "last 10 meetings". Click on "Recover last meeting" button present after the table.
+- Open the extension and click on "Open meetings". Click on the "Recover last meeting" button on the Meetings page.
 - TranscripTonic will also attempt to auto-recover any missed transcripts, just before a new meeting starts.
 
 <br />

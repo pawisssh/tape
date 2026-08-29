@@ -36,13 +36,10 @@ export function downloadTranscript(index, isWebhookEnabled) {
 
                 // Format transcript and chatMessages content
                 let content = getTranscriptString(meeting.transcript)
-                content += `\n\n---------------\nCHAT MESSAGES\n---------------\n\n`
-                content += getChatMessagesString(meeting.chatMessages)
-
-                // Add branding
-                content += "\n\n---------------\n"
-                content += "Transcript saved using TranscripTonic Chrome extension (https://chromewebstore.google.com/detail/ciepnfnceimjehngolkijpnbappkkiag)"
-                content += "\n---------------"
+                if (meeting.chatMessages && meeting.chatMessages.length > 0) {
+                    content += `\n\n---------------\nCHAT MESSAGES\n---------------\n\n`
+                    content += getChatMessagesString(meeting.chatMessages)
+                }
 
                 const blob = new Blob([content], { type: "text/plain" })
 

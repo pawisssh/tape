@@ -9,6 +9,11 @@ import { defineManifest } from "@crxjs/vite-plugin"
 // navigator.clipboard.writeText() throws when the document isn't focused) — see
 // PLAN.md §6 Phase 5 / §8.
 //
+// unlimitedStorage — added so the meetings list (each entry keeping its full transcript)
+// can grow past the default 5MB chrome.storage.local quota; the extension used to trim
+// this list to the last 10 meetings specifically to stay under that quota, until the UI
+// revamp removed the cap in favor of showing every stored meeting.
+//
 // HTML page paths below are the *source* paths CRXJS/Vite bundle from — for pages
 // declared here (action.default_popup, side_panel.default_path), CRXJS automatically
 // rewrites the manifest it emits into dist/ to point at wherever Vite actually placed
@@ -34,6 +39,7 @@ export default defineManifest({
     },
     permissions: [
         "storage",
+        "unlimitedStorage",
         "downloads",
         "scripting",
         "declarativeNetRequestWithHostAccess",

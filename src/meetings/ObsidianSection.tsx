@@ -1,143 +1,114 @@
 import { useEffect, useState } from "react"
-import { BookOpen } from "lucide-react"
-import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardAction } from "@/components/ui/card"
-import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Separator } from "@/components/ui/separator"
 import { getSync, setSync } from "@/lib/chrome-storage"
-import { toast } from "@/components/ui/toast"
+import { useDebouncedEffect } from "@/hooks/use-debounced-effect"
 
 // Kept in sync with extension/obsidian/markdown.js's DEFAULT_FILENAME_TEMPLATE — this
 // component can't import that value directly without also pulling in the rest of
 // markdown.js's dependency graph into the settings-form bundle for a single string
 // constant, so the default is mirrored here the same way pre-Phase-5 meetings.js did.
-const DEFAULT_OBSIDIAN_FILENAME_TEMPLATE = "{{date}} - {{title}}"
+const DEFAULT_OBSIDIAN_FILENAME_TEMPLATE = '{{date}}-{{"a concise, engaging title for this meeting"|kebab}}-meeting-note'
 
+// Rendered directly in the Integrations page's detail panel (see IntegrationsView.tsx) —
+// no Dialog/modal chrome of its own. There is no separate auto-save toggle: having a
+// vault name set here is itself what turns auto-save on (see getObsidianSettings() in
+// extension/obsidian/store.js). Every field autosaves (debounced) as it's edited — no
+// Save button.
 export default function ObsidianSection() {
     const [vaultName, setVaultName] = useState("")
     const [folder, setFolder] = useState("")
     const [fileNameTemplate, setFileNameTemplate] = useState(DEFAULT_OBSIDIAN_FILENAME_TEMPLATE)
-    const [autoSave, setAutoSave] = useState(false)
 
     useEffect(() => {
-        getSync<ResultSync>([
-            "obsidianVaultName",
-            "obsidianFolder",
-            "obsidianFileNameTemplate",
-            "autoSaveToObsidianAfterMeeting",
-        ]).then((result) => {
+        getSync<ResultSync>(["obsidianVaultName", "obsidianFolder", "obsidianFileNameTemplate"]).then((result) => {
             setVaultName(result.obsidianVaultName || "")
             setFolder(result.obsidianFolder || "")
             setFileNameTemplate(result.obsidianFileNameTemplate || DEFAULT_OBSIDIAN_FILENAME_TEMPLATE)
-            setAutoSave(result.autoSaveToObsidianAfterMeeting === true)
         })
     }, [])
 
-    function handleSubmit(e: React.FormEvent) {
-        e.preventDefault()
-        setSync({
-            obsidianVaultName: vaultName.trim(),
-            obsidianFolder: folder.trim(),
-            obsidianFileNameTemplate: fileNameTemplate.trim() || DEFAULT_OBSIDIAN_FILENAME_TEMPLATE,
-        }).then(() => toast.add({ title: "Obsidian settings saved", type: "success" }))
-    }
-
-    function handleAutoSaveChange(checked: boolean) {
-        if (checked && !vaultName.trim()) {
-            toast.add({
-                title: "Vault name required",
-                description: "Enter and save a vault name before enabling auto-save.",
-                type: "warning",
+    useDebouncedEffect(
+        () => {
+            setSync({
+                obsidianVaultName: vaultName.trim(),
+                obsidianFolder: folder.trim(),
+                obsidianFileNameTemplate: fileNameTemplate.trim() || DEFAULT_OBSIDIAN_FILENAME_TEMPLATE,
             })
-            return
-        }
-        setAutoSave(checked)
-        setSync({ autoSaveToObsidianAfterMeeting: checked })
-    }
+        },
+        [vaultName, folder, fileNameTemplate],
+        700,
+    )
 
     return (
-        <Card>
-            <CardHeader>
-                <div className="flex items-center gap-2">
-                    <BookOpen className="text-muted-foreground size-5" />
-                    <CardTitle>Obsidian</CardTitle>
-                </div>
-                <CardDescription>
-                    Hand transcripts off to Obsidian as a new note. The vault name must exactly match the name shown
-                    in Obsidian's vault switcher, and the destination folder must already exist in that vault.
-                </CardDescription>
-                <CardAction>
-                    <Badge variant={vaultName ? "default" : "outline"}>
-                        {vaultName ? "Configured" : "Not configured"}
-                    </Badge>
-                </CardAction>
-            </CardHeader>
-            <CardContent>
-                <form onSubmit={handleSubmit} className="flex flex-col gap-6">
-                        <div>
-                            <Label htmlFor="obsidian-vault-name">Vault name</Label>
-                            <Input
-                                type="text"
-                                id="obsidian-vault-name"
-                                className="mt-2"
-                                placeholder="My vault"
-                                value={vaultName}
-                                onChange={(e) => setVaultName(e.target.value)}
-                            />
-                            <p className="text-muted-foreground mt-1 text-xs">
-                                Must exactly match the vault name in Obsidian's vault switcher (case-sensitive).
-                            </p>
-                        </div>
+        <div className="flex flex-col gap-4">
+            <div>
+                <Label htmlFor="obsidian-vault-name">Vault name</Label>
+                <Input
+                    type="text"
+                    id="obsidian-vault-name"
+                    className="mt-2"
+                    placeholder="My vault"
+                    value={vaultName}
+                    onChange={(e) => setVaultName(e.target.value)}
+                />
+                <p className="text-muted-foreground mt-1 text-xs">
+                    Must exactly match the vault name in Obsidian's vault switcher (case-sensitive).
+                </p>
+            </div>
 
-                        <div>
-                            <Label htmlFor="obsidian-folder">Folder (optional)</Label>
-                            <Input
-                                type="text"
-                                id="obsidian-folder"
-                                className="mt-2"
-                                placeholder="Meetings/TranscripTonic"
-                                value={folder}
-                                onChange={(e) => setFolder(e.target.value)}
-                            />
-                            <p className="text-muted-foreground mt-1 text-xs">
-                                Vault-relative path. Leave blank to save to the vault root. This folder must already
-                                exist in your vault.
-                            </p>
-                        </div>
+            <div>
+                <Label htmlFor="obsidian-folder">Folder (optional)</Label>
+                <Input
+                    type="text"
+                    id="obsidian-folder"
+                    className="mt-2"
+                    placeholder="Meetings/TranscripTonic"
+                    value={folder}
+                    onChange={(e) => setFolder(e.target.value)}
+                />
+                <p className="text-muted-foreground mt-1 text-xs">
+                    Vault-relative path. Leave blank to save to the vault root. This folder must already exist in
+                    your vault.
+                </p>
+            </div>
 
-                        <div>
-                            <Label htmlFor="obsidian-filename-template">Filename template</Label>
-                            <Input
-                                type="text"
-                                id="obsidian-filename-template"
-                                className="mt-2"
-                                placeholder="{{date}} - {{title}}"
-                                value={fileNameTemplate}
-                                onChange={(e) => setFileNameTemplate(e.target.value)}
-                            />
-                            <p className="text-muted-foreground mt-1 text-xs">
-                                Available tokens: <code className="bg-foreground/10 rounded px-1">{"{{date}}"}</code>,{" "}
-                                <code className="bg-foreground/10 rounded px-1">{"{{time}}"}</code>,{" "}
-                                <code className="bg-foreground/10 rounded px-1">{"{{title}}"}</code>,{" "}
-                                <code className="bg-foreground/10 rounded px-1">{"{{software}}"}</code>. Example:{" "}
-                                <code className="bg-foreground/10 rounded px-1">{"{{date}} {{time}} {{title}} {{software}}"}</code>.
-                            </p>
-                        </div>
+            <div>
+                <Label htmlFor="obsidian-filename-template">Filename template</Label>
+                <Input
+                    type="text"
+                    id="obsidian-filename-template"
+                    className="mt-2"
+                    placeholder={DEFAULT_OBSIDIAN_FILENAME_TEMPLATE}
+                    value={fileNameTemplate}
+                    onChange={(e) => setFileNameTemplate(e.target.value)}
+                />
+                <p className="text-muted-foreground mt-1 text-xs">
+                    Available tokens: <code className="bg-foreground/10 rounded px-1">{"{{date}}"}</code>,{" "}
+                    <code className="bg-foreground/10 rounded px-1">{"{{time}}"}</code>,{" "}
+                    <code className="bg-foreground/10 rounded px-1">{"{{title}}"}</code>,{" "}
+                    <code className="bg-foreground/10 rounded px-1">{"{{platform}}"}</code>. Example:{" "}
+                    <code className="bg-foreground/10 rounded px-1">{"{{date}} {{time}} {{title}} {{platform}}"}</code>.
+                </p>
+                <p className="text-muted-foreground mt-1 text-xs">
+                    You can also use a quoted token, e.g.{" "}
+                    <code className="bg-foreground/10 rounded px-1">{'{{"a concise title"}}'}</code>, to use the
+                    meeting's AI-generated title (from its summary) instead of the raw meeting title — falls back to
+                    the meeting's own title when LLM summarization is off. A token (bare or quoted) can be piped
+                    through filters too, e.g.{" "}
+                    <code className="bg-foreground/10 rounded px-1">{'{{"a concise title"|kebab}}'}</code> to
+                    lowercase-and-hyphenate it. Default:{" "}
+                    <code className="bg-foreground/10 rounded px-1">{DEFAULT_OBSIDIAN_FILENAME_TEMPLATE}</code>.
+                </p>
+            </div>
 
-                        <hr />
+            <Separator />
 
-                        <div className="flex items-center gap-2">
-                            <Checkbox id="auto-save-obsidian" checked={autoSave} onCheckedChange={(v) => handleAutoSaveChange(v === true)} />
-                            <Label htmlFor="auto-save-obsidian">Automatically save transcript to Obsidian, after each meeting</Label>
-                        </div>
-
-                        <div>
-                            <Button type="submit">Save</Button>
-                        </div>
-                    </form>
-                </CardContent>
-        </Card>
+            <p className="text-muted-foreground text-sm">
+                Transcripts save to Obsidian automatically after each meeting once a vault name is set above — no
+                separate toggle needed.
+            </p>
+        </div>
     )
 }

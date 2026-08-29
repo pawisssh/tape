@@ -3,11 +3,25 @@
 @import "shadcn/tailwind.css";
 @import "@fontsource-variable/geist";
 
+/* Meetings-page redesign fonts only — self-hosted (no live Google Fonts CDN; same reason
+   Geist above is self-hosted, an MV3 extension shouldn't depend on network font loading).
+   Scoped to the .meetings-redesign subtree (see @layer base below), not used by any other
+   page yet. */
+@import "@fontsource/space-grotesk/400.css";
+@import "@fontsource/space-grotesk/500.css";
+@import "@fontsource/space-grotesk/700.css";
+@import "@fontsource-variable/roboto-flex/wdth.css";
+@import "@fontsource/space-mono/400.css";
+
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
     --font-heading: var(--font-sans);
     --font-sans: 'Geist Variable', sans-serif;
+    --font-meetings-heading: 'Space Grotesk', sans-serif;
+    --font-meetings-body: 'Roboto Flex Variable', sans-serif;
+    --font-meetings-mono: 'Space Mono', monospace;
+    --color-meetings-accent: #f34f16;
     --color-sidebar-ring: var(--sidebar-ring);
     --color-sidebar-border: var(--sidebar-border);
     --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -126,5 +140,55 @@
     }
   html {
     @apply font-sans;
+    }
+}
+
+/* Meetings-page redesign type ramp — applied only inside .meetings-redesign (see
+   src/meetings/App.tsx), so every other still-unredesigned page keeps today's Geist/
+   OKLCH look untouched. Three fixed roles, matching the Figma spec exactly: heading =
+   UI chrome (nav/tabs/toolbar/stat labels), body = dynamic content (titles/section
+   text), mono = tiny uppercase system-status labels only. */
+/* meetings.html's own <body> (see main.tsx) — SidebarProvider's root div caps out at
+   max-w-[1440px] and centers itself (App.tsx), so on any wider window there's a visible
+   margin outside that frame. That margin is this <body>'s own background showing through
+   (the shared `body { @apply bg-background }` rule above is the site-wide default, still
+   correct for every other still-unredesigned entry point — popup/side-panel/handoff — so
+   it's overridden here rather than changed globally), and should match the redesign's
+   base #f6f6f6 rather than staying white so the app frame doesn't float in a white halo. */
+.meetings-page-body {
+    background-color: #f6f6f6;
+}
+
+.meetings-redesign {
+    font-family: var(--font-meetings-body);
+    font-variation-settings: "wdth" 100;
+    /* Figma's base canvas color for the whole page (sidebar, list column, detail
+       column) — every "surface" element (Content Area, the active detail tab, the
+       CircleIconButton pills, the sidebar's black recording bar) pops to its own
+       explicit color on top of this. Neither the Sidebar container nor
+       MasterDetailLayout's root sets its own background otherwise, so this one rule
+       (applied to both via the shared .meetings-redesign class) is the single source. */
+    background-color: #f6f6f6;
+}
+.meetings-redesign .font-meetings-heading {
+    font-family: var(--font-meetings-heading);
+    font-variation-settings: normal;
+}
+.meetings-redesign .font-meetings-mono {
+    font-family: var(--font-meetings-mono);
+    font-variation-settings: normal;
+}
+
+/* OperationStatusBar.tsx's indeterminate sweep — there's no real percentage to report for
+   either operation it's used for (a single-phase LLM call, or Run's discrete-but-opaque-
+   duration steps), so per Figma node 2005:719 this is a fixed-width comet-shaped gradient
+   that loops left-to-right for as long as the bar is mounted, rather than a width tied to
+   real progress. */
+@keyframes meetings-operation-sweep {
+    0% {
+        transform: translateX(-100%);
+    }
+    100% {
+        transform: translateX(200%);
     }
 }

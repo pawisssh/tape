@@ -10,6 +10,13 @@ export interface TimestampedItem {
     timestamp?: string
 }
 
+export interface ActionItem {
+    text: string
+    timestamp?: string
+    assignee?: string
+    done: boolean
+}
+
 export interface Takeaway {
     lead: string
     detail: string
@@ -21,7 +28,7 @@ export interface Topic {
 }
 
 export interface ParsedSummary {
-    actionItems: TimestampedItem[]
+    actionItems: ActionItem[]
     decisions: TimestampedItem[]
     openQuestions: TimestampedItem[]
     nextSteps: TimestampedItem[]
@@ -49,10 +56,73 @@ function parseBulletLines(block: string): string[] {
         .map((line) => line.slice(2).trim())
 }
 
-function parseActionItems(block: string): TimestampedItem[] {
-    return parseBulletLines(block)
-        .map((line) => line.replace(/^\[ \]\s*/, ""))
-        .map(splitTimestamp)
+// Matches the ` — Assignee` suffix formatAssigneeSuffix() appends, right at the end of
+// a line (after any trailing timestamp — see stringifyItem's text+timestamp+assignee
+// order in template-syntax.js).
+const TRAILING_ASSIGNEE = /\s+—\s+(.+)$/
+
+const CHECKBOX_PREFIX = /^\[( |x|X)\]\s*/
+
+function parseActionItemLine(line: string): ActionItem {
+    let rest = line
+    let done = false
+    const checkboxMatch = rest.match(CHECKBOX_PREFIX)
+    if (checkboxMatch) {
+        done = checkboxMatch[1].toLowerCase() === "x"
+        rest = rest.slice(checkboxMatch[0].length)
+    }
+
+    let assignee: string | undefined
+    const assigneeMatch = rest.match(TRAILING_ASSIGNEE)
+    if (assigneeMatch) {
+        assignee = assigneeMatch[1].trim()
+        rest = rest.slice(0, assigneeMatch.index).trim()
+    }
+
+    const { text, timestamp } = splitTimestamp(rest)
+    return { text, timestamp, assignee, done }
+}
+
+function parseActionItems(block: string): ActionItem[] {
+    return parseBulletLines(block).map(parseActionItemLine)
+}
+
+/**
+ * Flip the `- [ ]`/`- [x]` checkbox marker of the `itemIndex`-th bullet (0-based, in
+ * document order) inside the "## Action items" section of `markdown`, leaving every
+ * other character untouched. A no-op (returns `markdown` unchanged) if the section or
+ * that index doesn't exist — never throws.
+ * @param markdown the raw `meeting.llmSummaryMarkdown` string
+ * @param itemIndex index into the parsed `actionItems` array
+ */
+export function toggleActionItemDone(markdown: string, itemIndex: number): string {
+    if (!markdown) {
+        return markdown
+    }
+    const lines = markdown.split("\n")
+    let inSection = false
+    let count = -1
+    for (let i = 0; i < lines.length; i++) {
+        const line = lines[i]
+        if (/^##\s+/.test(line)) {
+            inSection = /^##\s+Action items\s*$/i.test(line.trim())
+            continue
+        }
+        if (!inSection) {
+            continue
+        }
+        const match = line.match(/^(\s*-\s*)\[( |x|X)\](.*)$/)
+        if (!match) {
+            continue
+        }
+        count++
+        if (count === itemIndex) {
+            const isDone = match[2].toLowerCase() === "x"
+            lines[i] = `${match[1]}[${isDone ? " " : "x"}]${match[3]}`
+            break
+        }
+    }
+    return lines.join("\n")
 }
 
 function parseTimestampedList(block: string): TimestampedItem[] {

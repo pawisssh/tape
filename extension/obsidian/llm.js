@@ -10,92 +10,62 @@
 // caller (handoff.js) treats `null` as "skip enrichment, build the plain Phase-3
 // markdown note" — the raw transcript export must never depend on this succeeding.
 //
-// The pure helpers below (extractJsonFromResponse, renderSummaryMarkdown) have no
-// chrome.*/network dependency and are unit-tested directly in tests/llm.test.mjs.
-// enrichWithLlm is the only function here that touches the network.
+// The ONE deliberate exception to "always resolve to null on failure" is a context-window
+// mismatch: if the transcript clearly needs more tokens than the model is currently loaded
+// with, enrichWithLlm resolves to a distinct `{contextExceeded: true, ...}` shape instead
+// of `null`, and the caller (obsidian-handoff) surfaces this as a blocking, retryable error
+// with the actual numbers — rather than silently falling back to a plain note the user
+// didn't ask for and may not notice is missing its summary. Every other failure mode still
+// falls back to `null` as before.
+//
+// The pure helpers below (extractJsonFromResponse, endpointOriginPattern, estimateTokenCount)
+// have no chrome.*/network dependency and are unit-tested directly in tests/llm.test.mjs.
+// enrichWithLlm and getLoadedContextLength are the only functions here that touch the network.
+// Template resolution (Properties/Note-content -> resolved output) lives in
+// extension/obsidian/interpreter.js — see its own tests/interpreter.test.mjs.
 
-import { groupTranscriptBySpeaker, getMeetingTitle, formatElapsedTime } from "./markdown.js"
+import { getMeetingTitle } from "./markdown.js"
+import { resolveTemplateForTitle, migrateLegacyTemplate, resolveDefaultTemplate } from "./templates.js"
+import {
+    collectInstructions,
+    buildInterpreterUserPrompt,
+    buildInstructionAnswers,
+    resolveValue,
+    resolvePropertyValue,
+    getMeetingVariables,
+    templateReferencesVariable,
+} from "./interpreter.js"
 
-/** @type {ObsidianLlmEndpoint} */
-export const DEFAULT_LLM_ENDPOINT = "http://localhost:1234/v1/chat/completions"
-
-// Documented in-UI/README alternative for Ollama's OpenAI-compatible endpoint:
-// "http://localhost:11434/v1/chat/completions"
-
-/** @type {ObsidianLlmModel} */
-export const DEFAULT_LLM_MODEL = ""
+// Note: there is no DEFAULT_LLM_ENDPOINT/DEFAULT_LLM_MODEL here (there was, pre-multi-
+// provider) — obsidianLlmEndpoint/obsidianLlmModel are now always resolved by
+// store.js's getObsidianSettings() from the active provider+model (see providers.js),
+// and an empty string genuinely means "nothing configured yet," not "unset, so fall back
+// to a hardcoded LM Studio default." Falling back here would silently fire a request at
+// localhost even when the user has never configured a provider at all. See
+// PROVIDER_PRESETS in providers.js for the actual per-provider defaults now.
 
 /** @type {ObsidianLlmTimeoutMs} */
-export const DEFAULT_LLM_TIMEOUT_MS = 90000
+export const DEFAULT_LLM_TIMEOUT_MS = 300000
 
-const SYSTEM_PROMPT = `You are an assistant that turns a raw video-call transcript into structured meeting notes.
+// Timeout for the best-effort "what context is this model loaded with?" pre-flight check
+// (see getLoadedContextLength below) — independent of the main DEFAULT_LLM_TIMEOUT_MS
+// budget. This is a lightweight metadata GET, not a generation request, so it gets a much
+// shorter budget of its own.
+const MODEL_INFO_TIMEOUT_MS = 10000
 
-Read the transcript the user provides and respond with EXACTLY ONE JSON object and nothing else: no prose before or after it, no markdown code fences, no <think> or other reasoning block, no explanation of what you are doing.
+// Rough characters-per-token ratio for estimateTokenCount() — the standard approximation
+// for English text (used e.g. by OpenAI's own sizing guidance). This is intentionally not
+// real tokenization: the tool supports arbitrary local models/servers with no shared
+// tokenizer, and the estimate only feeds the context-window mismatch check above — a
+// rough-but-conservative number is all that's needed there, not exact token accounting.
+const CHARS_PER_TOKEN_ESTIMATE = 4
 
-Each transcript line is prefixed with an elapsed-time marker — "[M:SS]" for meetings under an hour, "[H:MM:SS]" for meetings an hour or longer — showing how far into the meeting that line was spoken. Whenever you fill in a "timestamp" field below, copy that bracket's value EXACTLY as it appears on the transcript line it came from. Never invent, estimate, or round a timestamp. If you cannot confidently attribute an item to one specific transcript line, omit the "timestamp" field entirely rather than guess.
-
-The JSON object must match this shape (all keys present; arrays may be empty; every "timestamp" field is optional):
-{
-  "title": "string, <=60 chars, must not contain / : # [ ] | ^",
-  "actionItems": [{"task": "string", "timestamp": "string (optional)"}],
-  "decisions": [{"text": "string", "timestamp": "string (optional)"}],
-  "openQuestions": [{"text": "string", "timestamp": "string (optional)"}],
-  "nextSteps": [{"text": "string", "timestamp": "string (optional)"}],
-  "keyTakeaways": [{"lead": "string", "detail": "string"}],
-  "topics": [{"heading": "string", "points": [{"text": "string", "timestamp": "string (optional)"}]}]
-}
-
-Field notes:
-- "actionItems" are concrete follow-up tasks, phrased as the task itself. Do not include an owner or a due date anywhere — this schema has no field for either.
-- "decisions" are choices the group explicitly settled on.
-- "openQuestions" are things left unresolved at the end of the meeting.
-- "nextSteps" are what happens after the meeting as a whole (the overall plan or sequence going forward), distinct from "actionItems" (individual tasks).
-- "keyTakeaways" is a short bulleted TL;DR of the meeting: each item is a short bold "lead" phrase followed by one sentence of "detail". This replaces a prose summary — never write a paragraph-style summary anywhere in your response. "keyTakeaways" items are synthesized across the whole meeting, so never include a "timestamp" for them.
-- "topics" groups the discussion into a few natural themes, each with its own list of timestamped "points".
-
-Rules:
-- Leave any array empty ([]) rather than invent content that is not clearly supported by the transcript.
-- Write "title" and every other string field in the same language the transcript itself is written in.
-- Only populate "topics" when the meeting naturally splits into a few distinct themes or agenda items. For a short or single-topic meeting, leave "topics" as an empty array.
-- Do not wrap the JSON in a code fence, and do not include any text — reasoning, apologies, or otherwise — before or after the JSON object.`
-
-/**
- * @param {Meeting} meeting
- * @returns {string}
- */
-function buildUserPrompt(meeting) {
-    const title = getMeetingTitle(meeting)
-    const software = meeting.meetingSoftware || "Meeting"
-    const groups = groupTranscriptBySpeaker(meeting.transcript)
-
-    const transcriptText = groups.length > 0
-        ? groups.map((g) => {
-            const elapsed = formatElapsedTime(meeting.meetingStartTimestamp, g.timestamp)
-            return elapsed ? `[${elapsed}] ${g.personName}: ${g.text}` : `${g.personName}: ${g.text}`
-        }).join("\n")
-        : "(no transcript captured)"
-
-    const chatMessages = meeting.chatMessages || []
-    const chatText = chatMessages.length > 0
-        ? chatMessages.map((m) => `${m.personName}: ${m.chatMessageText}`).join("\n")
-        : ""
-
-    const lines = [
-        `Meeting title: ${title}`,
-        `Platform: ${software}`,
-        "",
-        "Each transcript line below is prefixed with [M:SS] or [H:MM:SS], the elapsed time from the start of the meeting.",
-        "",
-        "Transcript:",
-        transcriptText,
-    ]
-
-    if (chatText) {
-        lines.push("", "Chat messages:", chatText)
-    }
-
-    return lines.join("\n")
-}
+// The old fixed SYSTEM_PROMPT/buildUserPrompt/renderSummaryMarkdown pipeline that used
+// to live here has been replaced by extension/obsidian/interpreter.js's
+// INTERPRETER_SYSTEM_PROMPT/buildInterpreterUserPrompt/buildInstructionAnswers — see
+// enrichWithLlm() below. Every meeting now resolves through a SummaryTemplate (either a
+// user-defined one or templates.js's built-in DEFAULT_TEMPLATE), whose `properties` and
+// `noteContent` are interpreter.js template strings.
 
 /**
  * Strip a leading/trailing ```` ``` ```` or ```` ```json ```` fence, if present, and
@@ -214,181 +184,6 @@ function asNonEmptyString(value) {
 }
 
 /**
- * @param {unknown} value
- * @returns {any[]}
- */
-function asArray(value) {
-    return Array.isArray(value) ? value : []
-}
-
-// Light validator for a "timestamp" field coming back from the model: matches
-// "M:SS"/"H:MM:SS" (1-3 digit hour/minute component, 2-digit seconds/minutes each
-// 00-59), rejects garbage like "unknown" or "12:65". This is the single chokepoint
-// every renderer below goes through to decide whether to print a "[...]" suffix —
-// "drop the bracket, keep the text" is enforced here once rather than re-implemented
-// per section.
-const TIMESTAMP_REGEX = /^\d{1,3}:[0-5]\d(:[0-5]\d)?$/
-
-/**
- * @param {unknown} timestamp
- * @returns {string} " [M:SS]"/" [H:MM:SS]" if valid, else ""
- */
-function formatTimestampSuffix(timestamp) {
-    return typeof timestamp === "string" && TIMESTAMP_REGEX.test(timestamp) ? ` [${timestamp}]` : ""
-}
-
-/**
- * Render one `- text [timestamp]` bullet from an item shaped like `{[textKey]: string,
- * timestamp?: string}`. Drops the item (returns `null`) if its text field is
- * empty/non-string; the timestamp suffix is omitted (not the whole bullet) if the
- * timestamp is missing or fails validation.
- * @param {unknown} item
- * @param {string} textKey
- * @returns {string | null}
- */
-function renderTimestampedBullet(item, textKey) {
-    if (!item || typeof item !== "object") {
-        return null
-    }
-    const text = asNonEmptyString(/** @type {any} */ (item)[textKey])
-    if (!text) {
-        return null
-    }
-    return `- ${text}${formatTimestampSuffix(/** @type {any} */ (item).timestamp)}`
-}
-
-/**
- * Render a section of timestamped bullets (decisions/openQuestions/nextSteps all share
- * this shape: `{text, timestamp?}`). Non-object / missing-text entries are dropped; the
- * whole section is omitted if nothing remains.
- * @param {string} heading e.g. "## Decisions made"
- * @param {unknown} items
- * @returns {string}
- */
-function renderTimestampedListSection(heading, items) {
-    const lines = asArray(items)
-        .map((item) => renderTimestampedBullet(item, "text"))
-        .filter((line) => typeof line === "string")
-    return lines.length > 0 ? [heading, "", lines.join("\n")].join("\n") : ""
-}
-
-/**
- * Render the "## Action items" section as a checklist: `- [ ] task [M:SS]`. No
- * owner/due-date handling at all — that metadata was removed from the schema entirely.
- * @param {unknown} actionItems
- * @returns {string}
- */
-function renderActionItemsSection(actionItems) {
-    const lines = asArray(actionItems)
-        .map((item) => {
-            if (!item || typeof item !== "object") {
-                return null
-            }
-            const task = asNonEmptyString(/** @type {any} */ (item).task)
-            if (!task) {
-                return null
-            }
-            return `- [ ] ${task}${formatTimestampSuffix(/** @type {any} */ (item).timestamp)}`
-        })
-        .filter((line) => typeof line === "string")
-    return lines.length > 0 ? ["## Action items", "", lines.join("\n")].join("\n") : ""
-}
-
-/**
- * Render the "## Key Takeaways" section: a bold-lead-in TL;DR list, `- **Lead:**
- * Detail.`. An item is dropped unless BOTH `lead` and `detail` are non-empty strings.
- * Stray trailing punctuation/whitespace is trimmed off `lead` before formatting so it
- * never produces a doubled colon (e.g. a model-supplied "Lead:" would otherwise render
- * as "**Lead::**"). Never given a timestamp suffix — these items are synthesized across
- * the whole meeting, not tied to one transcript moment.
- * @param {unknown} keyTakeaways
- * @returns {string}
- */
-function renderKeyTakeawaysSection(keyTakeaways) {
-    const lines = asArray(keyTakeaways)
-        .map((item) => {
-            if (!item || typeof item !== "object") {
-                return null
-            }
-            const lead = asNonEmptyString(/** @type {any} */ (item).lead)
-            const detail = asNonEmptyString(/** @type {any} */ (item).detail)
-            if (!lead || !detail) {
-                return null
-            }
-            const cleanLead = lead.replace(/[\s.:]+$/u, "")
-            return `- **${cleanLead}:** ${detail}`
-        })
-        .filter((line) => typeof line === "string")
-    return lines.length > 0 ? ["## Key Takeaways", "", lines.join("\n")].join("\n") : ""
-}
-
-/**
- * Render the "## Topics" section. A topic missing a heading, or whose points array has
- * no usable entries (each point needs a non-empty "text"), is dropped entirely rather
- * than rendered with a blank heading or an empty bullet list. Points are rendered via
- * the shared timestamped-bullet helper.
- * @param {unknown} topics
- * @returns {string}
- */
-function renderTopicsSection(topics) {
-    const rendered = []
-    for (const topic of asArray(topics)) {
-        if (!topic || typeof topic !== "object") {
-            continue
-        }
-        const heading = asNonEmptyString(/** @type {any} */ (topic).heading)
-        const points = asArray(/** @type {any} */ (topic).points)
-            .map((point) => renderTimestampedBullet(point, "text"))
-            .filter((line) => typeof line === "string")
-        if (!heading || points.length === 0) {
-            continue
-        }
-        rendered.push([`### ${heading}`, "", points.join("\n")].join("\n"))
-    }
-    return rendered.length > 0 ? ["## Topics", "", rendered.join("\n\n")].join("\n") : ""
-}
-
-/**
- * Render each field of a parsed LLM response as an independent markdown section, in a
- * fixed order: Action items, Decisions made, Open questions, Next steps, Key
- * Takeaways, Topics. There is no "Summary" section — it was removed from the schema
- * entirely in favor of "Key Takeaways". Any missing/malformed field is simply omitted
- * rather than crashing — this function never throws, so a response with only one
- * populated field still produces a valid, shorter markdown fragment. Returns "" if
- * nothing at all was renderable.
- * @param {Object | null | undefined} parsed
- * @returns {string}
- */
-export function renderSummaryMarkdown(parsed) {
-    if (!parsed || typeof parsed !== "object") {
-        return ""
-    }
-    const p = /** @type {any} */ (parsed)
-
-    const sections = []
-
-    const actionItemsSection = renderActionItemsSection(p.actionItems)
-    if (actionItemsSection) sections.push(actionItemsSection)
-
-    const decisionsSection = renderTimestampedListSection("## Decisions made", p.decisions)
-    if (decisionsSection) sections.push(decisionsSection)
-
-    const openQuestionsSection = renderTimestampedListSection("## Open questions", p.openQuestions)
-    if (openQuestionsSection) sections.push(openQuestionsSection)
-
-    const nextStepsSection = renderTimestampedListSection("## Next steps", p.nextSteps)
-    if (nextStepsSection) sections.push(nextStepsSection)
-
-    const keyTakeawaysSection = renderKeyTakeawaysSection(p.keyTakeaways)
-    if (keyTakeawaysSection) sections.push(keyTakeawaysSection)
-
-    const topicsSection = renderTopicsSection(p.topics)
-    if (topicsSection) sections.push(topicsSection)
-
-    return sections.join("\n\n")
-}
-
-/**
  * Derive the origin match pattern (for `chrome.permissions.request`) from a configured
  * LLM endpoint URL, e.g. "http://localhost:1234/v1/chat/completions" ->
  * "http://localhost/*". Chrome match patterns have no port component — any port on the
@@ -407,92 +202,221 @@ export function endpointOriginPattern(endpoint) {
 }
 
 /**
- * Call the configured local LLM server and turn its response into markdown ready to be
- * injected into buildMarkdown() as the `summaryMarkdown` option (and optionally an
- * `overrideTitle`). This is the ONLY function in this file that touches the network —
- * every other export above is a pure helper.
+ * Rough token-count estimate for arbitrary text (see CHARS_PER_TOKEN_ESTIMATE above for
+ * why this isn't real tokenization). Never throws on non-string input.
+ * @param {string} text
+ * @returns {number}
+ */
+export function estimateTokenCount(text) {
+    if (typeof text !== "string" || text.length === 0) {
+        return 0
+    }
+    return Math.ceil(text.length / CHARS_PER_TOKEN_ESTIMATE)
+}
+
+/**
+ * Best-effort read of the context window `model` is CURRENTLY loaded with, via LM
+ * Studio's native `GET {origin}/api/v0/models/{model}` endpoint (`loaded_context_length`
+ * field — present only while the model is actually loaded; distinct from the model's
+ * `max_context_length`, which is just its training-time ceiling and says nothing about
+ * how it's currently configured). This is an LM-Studio-specific extension, not part of
+ * the OpenAI spec the rest of this file targets — on Ollama or any other server, or if
+ * anything about this request goes wrong (unreachable, timeout, non-2xx, unparseable body,
+ * or the field simply isn't present), this resolves to `null`, meaning "unknown — the
+ * caller should skip the context-size check, not treat this as an error."
+ * @param {string} endpoint the configured chat-completions endpoint
+ * @param {string} model
+ * @param {string} [apiKey]
+ * @returns {Promise<number | null>}
+ */
+async function getLoadedContextLength(endpoint, model, apiKey) {
+    /** @type {string} */
+    let origin
+    try {
+        origin = new URL(endpoint).origin
+    } catch {
+        return null
+    }
+
+    const controller = new AbortController()
+    const timeoutHandle = setTimeout(() => controller.abort(), MODEL_INFO_TIMEOUT_MS)
+    try {
+        const response = await fetch(`${origin}/api/v0/models/${encodeURIComponent(model)}`, {
+            headers: apiKey ? { Authorization: `Bearer ${apiKey}` } : undefined,
+            signal: controller.signal,
+        })
+        if (!response.ok) {
+            return null
+        }
+        /** @type {any} */
+        const body = await response.json()
+        const loadedContextLength = body?.loaded_context_length
+        return typeof loadedContextLength === "number" && Number.isFinite(loadedContextLength)
+            ? loadedContextLength
+            : null
+    } catch {
+        return null
+    } finally {
+        clearTimeout(timeoutHandle)
+    }
+}
+
+/**
+ * Call the configured local LLM server (if the matched template has any AI
+ * instructions at all — an all-variables template skips the network call entirely) and
+ * resolve the matched SummaryTemplate's `properties`/`noteContent` against the result,
+ * ready to be injected into buildMarkdown() via `resolvedProperties`/`summaryMarkdown`/
+ * `overrideTitle`. This and getLoadedContextLength above are the only functions in this
+ * file that touch the network — every other export is a pure helper.
  *
- * Non-negotiable: this function must never throw and must never reject. Every failure
- * mode (server unreachable, DNS failure, missing host permission, non-2xx response,
- * timeout/abort, an unparseable or empty response body, or any other unexpected error)
- * resolves to `null`. The caller (handoff.js) treats `null` as "skip enrichment, fall
- * back to the plain Phase-3 markdown" and never needs a try/catch of its own around
+ * Non-negotiable: this function must never throw and must never reject. Almost every
+ * failure mode (server unreachable, DNS failure, missing host permission, non-2xx
+ * response, timeout/abort, an unparseable or empty response body, or any other
+ * unexpected error) resolves to `null`. The caller treats `null` as "skip enrichment,
+ * fall back to the plain Phase-3 markdown" and never needs a try/catch of its own around
  * this call.
+ *
+ * The one exception: if LM Studio reports the model is currently loaded with less context
+ * than this transcript is estimated to need, this resolves to a distinct
+ * `{contextExceeded: true, requiredTokens, loadedContextLength}` shape instead — a
+ * deliberately actionable, user-fixable condition (reload the model in LM Studio with more
+ * context) that the caller surfaces as a blocking, retryable error rather than silently
+ * dropping the summary. This check is itself best-effort: if the loaded context length
+ * can't be determined (non-LM-Studio server, model info unavailable, etc.), it's simply
+ * skipped and the normal request proceeds.
  * @param {Meeting} meeting
  * @param {ObsidianSettings} settings
- * @returns {Promise<{title?: string, summaryMarkdown: string} | null>}
+ * @returns {Promise<{title?: string, summaryMarkdown: string, properties: ResolvedProperty[], includesTranscript: boolean, includesChatMessages: boolean} | {contextExceeded: true, requiredTokens: number, loadedContextLength: number} | null>}
  */
 export async function enrichWithLlm(meeting, settings) {
     try {
         if (!settings || !settings.obsidianUseLlm) {
             return null
         }
-        const endpoint = settings.obsidianLlmEndpoint || DEFAULT_LLM_ENDPOINT
+        const endpoint = settings.obsidianLlmEndpoint
         if (!endpoint) {
             return null
         }
-        const timeoutMs = settings.obsidianLlmTimeoutMs || DEFAULT_LLM_TIMEOUT_MS
+        const model = settings.obsidianLlmModel
 
-        const controller = new AbortController()
-        const timeoutHandle = setTimeout(() => controller.abort(), timeoutMs)
+        // A per-meeting override (set via the header toolbar's Follow-up picker) takes
+        // priority over the automatic keyword match. A stale override — the referenced
+        // template was since deleted — falls through to automatic resolution rather than
+        // failing, matching this function's "never throw" contract.
+        const templates = settings.obsidianLlmSummaryTemplates || []
+        const overrideId = meeting.templateOverrideId
+        const overridden = overrideId
+            ? overrideId === "default"
+                ? resolveDefaultTemplate(templates)
+                : templates.find((t) => t.id === overrideId)
+            : undefined
+        const template = migrateLegacyTemplate(
+            overridden || resolveTemplateForTitle(getMeetingTitle(meeting), templates) || resolveDefaultTemplate(templates),
+        )
+        const meetingVariables = getMeetingVariables(meeting)
+        const instructions = [...collectInstructions(template).values()]
 
-        /** @type {Response} */
-        let response
-        try {
-            response = await fetch(endpoint, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    model: settings.obsidianLlmModel || DEFAULT_LLM_MODEL,
-                    temperature: 0.3,
-                    stream: false,
-                    messages: [
-                        { role: "system", content: SYSTEM_PROMPT },
-                        { role: "user", content: buildUserPrompt(meeting) },
-                    ],
-                }),
-                signal: controller.signal,
-            })
-        } catch {
-            // Server unreachable, DNS failure, missing host permission, or the abort
-            // firing (timeout) — all surface as a rejected fetch() here.
-            return null
-        } finally {
-            clearTimeout(timeoutHandle)
+        /** @type {Map<string, unknown>} */
+        let instructionAnswers = new Map()
+
+        if (instructions.length > 0) {
+            const userPrompt = buildInterpreterUserPrompt(meeting, instructions)
+            const systemPrompt = settings.obsidianLlmSystemPrompt
+            const fullPromptText = systemPrompt + "\n" + userPrompt
+
+            if (model) {
+                const loadedContextLength = await getLoadedContextLength(endpoint, model, settings.obsidianLlmApiKey)
+                if (loadedContextLength !== null) {
+                    const requiredTokens = estimateTokenCount(fullPromptText)
+                    if (requiredTokens > loadedContextLength) {
+                        return { contextExceeded: true, requiredTokens, loadedContextLength }
+                    }
+                }
+            }
+
+            const timeoutMs = settings.obsidianLlmTimeoutMs || DEFAULT_LLM_TIMEOUT_MS
+
+            const controller = new AbortController()
+            const timeoutHandle = setTimeout(() => controller.abort(), timeoutMs)
+
+            /** @type {Response} */
+            let response
+            try {
+                response = await fetch(endpoint, {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        ...(settings.obsidianLlmApiKey ? { Authorization: `Bearer ${settings.obsidianLlmApiKey}` } : {}),
+                    },
+                    body: JSON.stringify({
+                        model,
+                        temperature: 0.3,
+                        stream: false,
+                        messages: [
+                            { role: "system", content: systemPrompt },
+                            { role: "user", content: userPrompt },
+                        ],
+                    }),
+                    signal: controller.signal,
+                })
+            } catch {
+                // Server unreachable, DNS failure, missing host permission, or the abort
+                // firing (timeout) — all surface as a rejected fetch() here.
+                return null
+            } finally {
+                clearTimeout(timeoutHandle)
+            }
+
+            if (!response.ok) {
+                return null
+            }
+
+            /** @type {any} */
+            let body
+            try {
+                body = await response.json()
+            } catch {
+                return null
+            }
+
+            const content = body?.choices?.[0]?.message?.content
+            if (typeof content !== "string" || content.trim() === "") {
+                return null
+            }
+
+            const parsed = extractJsonFromResponse(content)
+            if (parsed === null) {
+                return null
+            }
+
+            instructionAnswers = buildInstructionAnswers(parsed, instructions)
         }
 
-        if (!response.ok) {
+        const resolveCtx = { meetingVariables, instructionAnswers }
+        const resolvedProperties = (template.properties || []).map((p) => ({
+            name: p.name,
+            type: p.type,
+            value: resolvePropertyValue(p.value, resolveCtx, p.type),
+        }))
+        const summaryMarkdown = resolveValue(template.noteContent, resolveCtx).trim()
+
+        if (!summaryMarkdown && resolvedProperties.length === 0) {
+            // Nothing usable came out of this template at all — treat the same as a
+            // failure so the caller falls back to the plain note.
             return null
         }
 
-        /** @type {any} */
-        let body
-        try {
-            body = await response.json()
-        } catch {
-            return null
+        const titleProperty = resolvedProperties.find((p) => p.name === "title")
+        const title =
+            titleProperty && typeof titleProperty.value === "string" ? asNonEmptyString(titleProperty.value) : undefined
+
+        return {
+            title,
+            summaryMarkdown,
+            properties: resolvedProperties,
+            includesTranscript: templateReferencesVariable(template.noteContent, "transcript"),
+            includesChatMessages: templateReferencesVariable(template.noteContent, "chatMessages"),
         }
-
-        const content = body?.choices?.[0]?.message?.content
-        if (typeof content !== "string" || content.trim() === "") {
-            return null
-        }
-
-        const parsed = extractJsonFromResponse(content)
-        if (parsed === null) {
-            return null
-        }
-
-        const summaryMarkdown = renderSummaryMarkdown(parsed)
-        if (!summaryMarkdown) {
-            // Nothing usable came back (e.g. every field was empty/malformed) — treat
-            // the same as a failure so the caller falls back to the plain note.
-            return null
-        }
-
-        const title = asNonEmptyString(/** @type {any} */ (parsed).title)
-
-        return { title, summaryMarkdown }
     } catch {
         // Final safety net: no matter what goes wrong above (including a bug in this
         // file), enrichment must degrade to "skip it", never throw into the caller.

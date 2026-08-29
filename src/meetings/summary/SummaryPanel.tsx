@@ -6,7 +6,7 @@ import { CheckCircleFillIcon, CircleIcon } from "../ui/icons"
 function TimestampChip({ timestamp }: { timestamp?: string }) {
     if (!timestamp) return null
     return (
-        <span className="font-meetings-mono ml-1.5 shrink-0 bg-black/5 px-1 py-0.5 text-[10px] text-black/38 tabular-nums">
+        <span className="font-meetings-mono ml-1.5 shrink-0 bg-meetings-chip px-1 py-0.5 text-[10px] text-meetings-ink-faint tabular-nums">
             {timestamp}
         </span>
     )
@@ -16,7 +16,7 @@ function TimestampedList({ items }: { items: TimestampedItem[] }) {
     return (
         <ul className="flex flex-col gap-2">
             {items.map((item, i) => (
-                <li key={i} className="flex items-start justify-between gap-2 text-sm text-black/87">
+                <li key={i} className="flex items-start justify-between gap-2 text-sm text-meetings-ink">
                     <span>{item.text}</span>
                     <TimestampChip timestamp={item.timestamp} />
                 </li>
@@ -39,9 +39,9 @@ export default function SummaryPanel({ markdown, onToggleActionItem }: SummaryPa
             // above doesn't recognize (it's hand-rolled against the built-in default
             // template's exact output shape) — fall back to showing it as-is rather than
             // claiming there's no summary when there plainly is one.
-            return <div className="px-4 py-4 text-sm whitespace-pre-wrap text-black/87">{markdown}</div>
+            return <div className="px-4 py-4 text-sm whitespace-pre-wrap text-meetings-ink">{markdown}</div>
         }
-        return <p className="px-4 py-4 text-sm text-black/60">No summary yet.</p>
+        return <p className="px-4 py-4 text-sm text-meetings-ink-muted">No summary yet.</p>
     }
 
     return (
@@ -53,13 +53,13 @@ export default function SummaryPanel({ markdown, onToggleActionItem }: SummaryPa
                             <li key={i} className="flex items-center gap-2.5 text-sm">
                                 <button type="button" onClick={() => onToggleActionItem(i)} className="shrink-0">
                                     {item.done ? (
-                                        <CheckCircleFillIcon className="size-6 text-black/87" />
+                                        <CheckCircleFillIcon className="size-6 text-meetings-ink" />
                                     ) : (
-                                        <CircleIcon className="size-6 text-black/87" />
+                                        <CircleIcon className="size-6 text-meetings-ink" />
                                     )}
                                 </button>
-                                <span className={cn("flex-1 text-black/87", item.done && "line-through")}>{item.text}</span>
-                                {item.assignee ? <span className="shrink-0 text-black/87">{item.assignee}</span> : null}
+                                <span className={cn("flex-1 text-meetings-ink", item.done && "line-through")}>{item.text}</span>
+                                {item.assignee ? <span className="shrink-0 text-meetings-ink">{item.assignee}</span> : null}
                                 <TimestampChip timestamp={item.timestamp} />
                             </li>
                         ))}
@@ -89,7 +89,7 @@ export default function SummaryPanel({ markdown, onToggleActionItem }: SummaryPa
                 <CollapsibleSection label="TL;DR">
                     <ul className="flex flex-col gap-2">
                         {summary.keyTakeaways.map((item, i) => (
-                            <li key={i} className="text-sm text-black/87">
+                            <li key={i} className="text-sm text-meetings-ink">
                                 <span className="font-bold">{item.lead}:</span> {item.detail}
                             </li>
                         ))}
@@ -102,7 +102,7 @@ export default function SummaryPanel({ markdown, onToggleActionItem }: SummaryPa
                     <div className="flex flex-col gap-3">
                         {summary.topics.map((topic, i) => (
                             <div key={i}>
-                                <p className="mb-1 text-sm font-bold text-black/87">{topic.heading}</p>
+                                <p className="mb-1 text-sm font-bold text-meetings-ink">{topic.heading}</p>
                                 <TimestampedList items={topic.points} />
                             </div>
                         ))}

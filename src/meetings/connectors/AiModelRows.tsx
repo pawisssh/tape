@@ -26,12 +26,12 @@ export default function AiModelRows({ provider, activeModel, onActiveModelChange
     }, [provider.baseUrl, provider.apiKey])
 
     if (isFetching && models.length === 0) {
-        return <p className="py-2 pr-[13px] pl-11 text-xs text-black/60">Checking models…</p>
+        return <p className="py-2 pr-[13px] pl-11 text-xs text-meetings-ink-muted">Checking models…</p>
     }
 
     if (models.length === 0) {
         return (
-            <p className="py-2 pr-[13px] pl-11 text-xs text-black/60">
+            <p className="py-2 pr-[13px] pl-11 text-xs text-meetings-ink-muted">
                 Couldn't reach the provider — check the base URL/API key.
             </p>
         )
@@ -43,7 +43,7 @@ export default function AiModelRows({ provider, activeModel, onActiveModelChange
                 const isActive = activeModel?.providerId === provider.id && activeModel?.modelId === modelId
                 return (
                     <div key={modelId} className="flex h-16 items-center gap-3 pr-4 pl-11">
-                        <span className="min-w-0 flex-1 truncate text-sm font-medium text-black/87">{modelId}</span>
+                        <span className="min-w-0 flex-1 truncate text-sm font-medium text-meetings-ink">{modelId}</span>
                         <Switch
                             checked={isActive}
                             onCheckedChange={(checked) =>

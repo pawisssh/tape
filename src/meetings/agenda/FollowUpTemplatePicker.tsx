@@ -47,10 +47,10 @@ export default function FollowUpTemplatePicker({ value, disabled, onChange }: Fo
                     <button
                         type="button"
                         disabled={disabled}
-                        className="flex h-7 min-w-0 items-center gap-1 border border-black/12 px-2 text-xs text-black/87 disabled:pointer-events-none disabled:opacity-50"
+                        className="flex h-7 min-w-0 items-center gap-1 border border-meetings-border px-2 text-xs text-meetings-ink disabled:pointer-events-none disabled:opacity-50"
                     >
                         <span className="truncate">{selectedName}</span>
-                        <KeyboardArrowDownIcon className="size-3.5 shrink-0 text-black/38" />
+                        <KeyboardArrowDownIcon className="size-3.5 shrink-0 text-meetings-ink-faint" />
                     </button>
                 }
             />

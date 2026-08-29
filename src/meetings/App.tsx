@@ -115,7 +115,7 @@ export default function App() {
                                             <SidebarMenuItem key={item.view}>
                                                 <SidebarMenuButton
                                                     size="lg"
-                                                    className="h-12 rounded-none px-4 not-data-[active=true]:hover:bg-black/8 data-[active=true]:bg-transparent group-data-[collapsible=icon]:mx-2"
+                                                    className="h-12 rounded-none px-4 not-data-[active=true]:hover:bg-meetings-chip data-[active=true]:bg-transparent group-data-[collapsible=icon]:mx-2"
                                                     isActive={active}
                                                     onClick={() => setActiveView(item.view)}
                                                     tooltip={item.label}
@@ -123,7 +123,9 @@ export default function App() {
                                                     <span
                                                         className={cn(
                                                             "flex size-6 shrink-0 items-center justify-center",
-                                                            active ? "bg-black/87 text-white" : "bg-[#d9d9d9] text-black/38",
+                                                            active
+                                                                ? "bg-meetings-ink text-meetings-surface"
+                                                                : "bg-meetings-chip-neutral text-meetings-ink-faint",
                                                         )}
                                                     >
                                                         <item.icon className="size-4" />
@@ -131,7 +133,7 @@ export default function App() {
                                                     <span
                                                         className={cn(
                                                             "font-meetings-heading text-base font-medium uppercase group-data-[collapsible=icon]:hidden",
-                                                            active ? "text-black/87" : "text-black/38",
+                                                            active ? "text-meetings-ink" : "text-meetings-ink-faint",
                                                         )}
                                                     >
                                                         {item.label}

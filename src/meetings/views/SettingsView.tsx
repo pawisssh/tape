@@ -112,17 +112,17 @@ export default function SettingsView() {
     return (
         <MasterDetailLayout
             className="meetings-redesign"
-            contentTitle={<h1 className="font-meetings-heading flex-1 text-xl text-black/87">settings</h1>}
+            contentTitle={<h1 className="font-meetings-heading flex-1 text-xl text-meetings-ink">settings</h1>}
             content={
                 <div className="flex flex-col">
-                    <p className="px-4 pt-4 pb-2 text-sm text-black/60">Capture behavior and app information.</p>
+                    <p className="px-4 pt-4 pb-2 text-sm text-meetings-ink-muted">Capture behavior and app information.</p>
                     {CATEGORIES.map((category) => (
                         <button
                             key={category.id}
                             type="button"
                             className={cn(
-                                "flex h-16 items-center justify-between gap-2 px-4 text-left text-sm font-medium text-black/87",
-                                activeCategory === category.id && "bg-black/8",
+                                "flex h-16 items-center justify-between gap-2 px-4 text-left text-sm font-medium text-meetings-ink",
+                                activeCategory === category.id && "bg-meetings-chip",
                             )}
                             onClick={() => {
                                 setActiveCategory(category.id)
@@ -130,7 +130,7 @@ export default function SettingsView() {
                             }}
                         >
                             {category.label}
-                            <KeyboardArrowRightIcon className="size-4 shrink-0 text-black/38" />
+                            <KeyboardArrowRightIcon className="size-4 shrink-0 text-meetings-ink-faint" />
                         </button>
                     ))}
                 </div>
@@ -138,27 +138,27 @@ export default function SettingsView() {
             detailTitle={
                 <>
                     <MobileBackButton onClick={() => setMobileDetailOpen(false)} />
-                    <h2 className="font-meetings-heading text-xl text-black/87">{activeCategoryInfo.label}</h2>
+                    <h2 className="font-meetings-heading text-xl text-meetings-ink">{activeCategoryInfo.label}</h2>
                 </>
             }
             detail={
                 <div className="px-4">
-                    <p className="pt-4 pb-2 text-sm text-black/60">{activeCategoryInfo.description}</p>
+                    <p className="pt-4 pb-2 text-sm text-meetings-ink-muted">{activeCategoryInfo.description}</p>
                     {activeCategory === "capture" ? (
                         <div>
                             <RadioGroup value={operationMode} onValueChange={handleOperationModeChange} className="gap-3">
                                 <div className="flex items-start gap-2">
                                     <RadioGroupItem value="auto" id="auto-mode" className="mt-0.5" />
                                     <Label htmlFor="auto-mode" className="flex-col items-start font-normal">
-                                        <span className="font-bold text-black/87">Auto mode</span>
-                                        <span className="text-black/60">Get transcripts of all meetings</span>
+                                        <span className="font-bold text-meetings-ink">Auto mode</span>
+                                        <span className="text-meetings-ink-muted">Get transcripts of all meetings</span>
                                     </Label>
                                 </div>
                                 <div className="flex items-start gap-2">
                                     <RadioGroupItem value="manual" id="manual-mode" className="mt-0.5" />
                                     <Label htmlFor="manual-mode" className="flex-col items-start font-normal">
-                                        <span className="font-bold text-black/87">Manual mode</span>
-                                        <span className="text-black/60">
+                                        <span className="font-bold text-meetings-ink">Manual mode</span>
+                                        <span className="text-meetings-ink-muted">
                                             Switch on transcript when needed during the meeting
                                         </span>
                                     </Label>
@@ -173,7 +173,7 @@ export default function SettingsView() {
                                     checked={hideCaptions}
                                     onCheckedChange={(v) => handleHideCaptionsChange(v === true)}
                                 />
-                                <Label htmlFor="hide-captions" className="font-bold text-black/87">
+                                <Label htmlFor="hide-captions" className="font-bold text-meetings-ink">
                                     Hide captions on the meeting UI
                                 </Label>
                             </div>
@@ -182,8 +182,8 @@ export default function SettingsView() {
                         <div>
                             <div className="flex items-start justify-between gap-4">
                                 <div>
-                                    <p className="font-bold text-black/87">Enable LLM summary</p>
-                                    <p className="mt-1 text-sm text-black/60">
+                                    <p className="font-bold text-meetings-ink">Enable LLM summary</p>
+                                    <p className="mt-1 text-sm text-meetings-ink-muted">
                                         Configure a provider and pick a model on the Integrations page.
                                     </p>
                                 </div>
@@ -194,8 +194,8 @@ export default function SettingsView() {
 
                             <div className={`flex items-start justify-between gap-4 ${llmEnabled ? "" : "opacity-50"}`}>
                                 <div>
-                                    <p className="font-bold text-black/87">Automatically run</p>
-                                    <p className="mt-1 text-sm text-black/60">
+                                    <p className="font-bold text-meetings-ink">Automatically run</p>
+                                    <p className="mt-1 text-sm text-meetings-ink-muted">
                                         Summarize automatically whenever a meeting is saved to Obsidian. Turn off to
                                         only summarize on demand — a "Summarize now" action stays available in each
                                         meeting's menu on the Meetings page either way.
@@ -219,7 +219,7 @@ export default function SettingsView() {
                                     disabled={!llmEnabled}
                                     onChange={(e) => setLlmTimeoutMs(e.target.value)}
                                 />
-                                <p className="mt-1 text-xs text-black/60">
+                                <p className="mt-1 text-xs text-meetings-ink-muted">
                                     How long to wait before giving up and saving the plain transcript instead.
                                     Default is 300000 (5 minutes) — models can be slow, especially on long
                                     transcripts.
@@ -249,7 +249,7 @@ export default function SettingsView() {
                                     disabled={!llmEnabled}
                                     onChange={(e) => setLlmSystemPrompt(e.target.value)}
                                 />
-                                <p className="text-black/60 mt-1 text-xs">
+                                <p className="text-meetings-ink-muted mt-1 text-xs">
                                     The full instruction sent to the model before every summarization request.
                                     Editing out the "respond with a single JSON object" instruction will break
                                     summarization — use Reset to default if that happens.
@@ -257,11 +257,11 @@ export default function SettingsView() {
                             </div>
                         </div>
                     ) : (
-                        <p className="text-black/60 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
+                        <p className="text-meetings-ink-muted flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
                             <span>v{version}</span>
                             <span>·</span>
                             <a
-                                className="font-bold text-black/87 underline underline-offset-4"
+                                className="font-bold text-meetings-ink underline underline-offset-4"
                                 href="https://github.com/vivek-nexus/transcriptonic?tab=readme-ov-file#notice"
                                 target="_blank"
                                 rel="noreferrer"
@@ -270,7 +270,7 @@ export default function SettingsView() {
                             </a>
                             <span>·</span>
                             <a
-                                className="font-bold text-black/87 underline underline-offset-4"
+                                className="font-bold text-meetings-ink underline underline-offset-4"
                                 href="https://github.com/vivek-nexus/transcriptonic#readme"
                                 target="_blank"
                                 rel="noreferrer"
@@ -279,7 +279,7 @@ export default function SettingsView() {
                             </a>
                             <span>·</span>
                             <a
-                                className="font-bold text-black/87 underline underline-offset-4"
+                                className="font-bold text-meetings-ink underline underline-offset-4"
                                 href="https://github.com/vivek-nexus/transcriptonic/issues"
                                 target="_blank"
                                 rel="noreferrer"
@@ -290,7 +290,7 @@ export default function SettingsView() {
                             <span>
                                 Another project by{" "}
                                 <a
-                                    className="font-bold text-black/87 underline underline-offset-4"
+                                    className="font-bold text-meetings-ink underline underline-offset-4"
                                     href="https://vivek-nexus.github.io"
                                     target="_blank"
                                     rel="noreferrer"

@@ -7,7 +7,7 @@ interface MeetingHeaderStatsProps {
 
 function Stat({ label, value }: { label: string; value: string }) {
     return (
-        <div className="font-meetings-heading flex flex-col text-sm font-medium text-black/38">
+        <div className="font-meetings-heading flex flex-col text-sm font-medium text-meetings-ink-faint">
             <span>{label}</span>
             <span className="lowercase">{value}</span>
         </div>

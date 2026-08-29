@@ -16,14 +16,14 @@ export default function CollapsibleSection({ label, defaultOpen = false, childre
     const [open, setOpen] = useState(defaultOpen)
 
     return (
-        <div className="border-b border-black/12">
+        <div className="border-b border-meetings-border">
             <button type="button" onClick={() => setOpen((o) => !o)} className="flex h-12 w-full items-center gap-2 px-4 text-left">
                 {open ? (
-                    <KeyboardArrowDownIcon className="size-6 shrink-0 text-black/87" />
+                    <KeyboardArrowDownIcon className="size-6 shrink-0 text-meetings-ink" />
                 ) : (
-                    <KeyboardArrowRightIcon className="size-6 shrink-0 text-black/87" />
+                    <KeyboardArrowRightIcon className="size-6 shrink-0 text-meetings-ink" />
                 )}
-                <span className="font-meetings-body text-2xl text-black/87">{label}</span>
+                <span className="font-meetings-body text-2xl text-meetings-ink">{label}</span>
             </button>
             {open ? <div className="pr-4 pb-3 pl-12">{children}</div> : null}
         </div>

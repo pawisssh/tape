@@ -193,7 +193,7 @@ export default function ProviderPanel({ provider, onSaved, onDeleted, allowedTyp
 
                 <div>
                     <Label htmlFor="provider-api-key">API key</Label>
-                    <p className="mt-1 mb-2 text-xs text-black/60">
+                    <p className="mt-1 mb-2 text-xs text-meetings-ink-muted">
                         Optional — required by most cloud providers, not needed for a local server.
                     </p>
                     <Input

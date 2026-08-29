@@ -54,10 +54,10 @@ export default function DetailTabs({
                         onClick={() => setActiveTab(tab.id)}
                         className={cn(
                             "font-meetings-heading flex flex-1 flex-col items-center justify-center border-b p-2 text-xs font-normal uppercase",
-                            i < TABS.length - 1 && "border-r border-r-black/12",
+                            i < TABS.length - 1 && "border-r border-r-meetings-border",
                             activeTab === tab.id
-                                ? "border-b-transparent bg-white text-black/87"
-                                : "border-b-black/12 bg-[#f6f6f6] text-black/60",
+                                ? "border-b-transparent bg-meetings-card text-meetings-ink"
+                                : "border-b-meetings-border bg-meetings-surface text-meetings-ink-muted",
                         )}
                     >
                         {tab.label}
@@ -67,14 +67,14 @@ export default function DetailTabs({
                     type="button"
                     disabled={statusLabel !== null}
                     onClick={onRun}
-                    className="bg-meetings-accent font-meetings-heading flex flex-1 flex-col items-start justify-between border-b border-black/12 px-4 py-2 text-xs font-normal text-white transition-opacity hover:opacity-90 disabled:pointer-events-none disabled:opacity-50"
+                    className="bg-meetings-accent font-meetings-heading flex flex-1 flex-col items-start justify-between border-b border-meetings-border px-4 py-2 text-xs font-normal text-white transition-opacity hover:opacity-90 disabled:pointer-events-none disabled:opacity-50"
                 >
                     <span className="uppercase">{statusLabel !== null ? "Running…" : "Run"}</span>
                     <PlayArrowFillIcon className="size-3.5" />
                 </button>
             </div>
 
-            <div className="flex-1 bg-white">
+            <div className="flex-1 bg-meetings-card">
                 {activeTab === "summary" ? (
                     <SummaryPanel markdown={meeting.llmSummaryMarkdown} onToggleActionItem={onToggleActionItem} />
                 ) : null}

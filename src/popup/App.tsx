@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react"
-import { Card, CardContent } from "@/components/ui/card"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Label } from "@/components/ui/label"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
@@ -43,17 +42,17 @@ export default function App() {
     }
 
     return (
-        <div className="w-[560px] p-6 text-sm">
+        <div className="meetings-redesign w-[560px] p-6 text-sm">
             <div className="mb-5 flex items-center gap-3">
-                <img className="size-10 rounded-lg" src={iconUrl} alt="" />
+                <img className="size-10 rounded-none" src={iconUrl} alt="" />
                 <div>
-                    <h1 className="text-lg font-bold">TranscripTonic</h1>
-                    <p className="text-muted-foreground">Simple Google Meet transcripts. Private and open source.</p>
+                    <h1 className="font-meetings-heading text-lg text-meetings-ink">TranscripTonic</h1>
+                    <p className="text-meetings-ink-muted">Simple Google Meet transcripts. Private and open source.</p>
                 </div>
             </div>
 
-            <Card className="mb-4">
-              <CardContent className="flex gap-8">
+            <div className="mb-4 border border-meetings-border">
+              <div className="flex gap-8 p-4">
                     <div className="flex items-center gap-2">
                         <Checkbox
                             id="enable-google-meet"
@@ -61,7 +60,7 @@ export default function App() {
                             disabled={googleMeet.pending}
                             onCheckedChange={(v) => googleMeet.toggle(v === true)}
                         />
-                        <Label htmlFor="enable-google-meet" className="font-bold">
+                        <Label htmlFor="enable-google-meet" className="font-bold text-meetings-ink">
                             Google Meet
                         </Label>
                     </div>
@@ -72,7 +71,7 @@ export default function App() {
                             disabled={teams.pending}
                             onCheckedChange={(v) => teams.toggle(v === true)}
                         />
-                        <Label htmlFor="enable-teams" className="font-bold">
+                        <Label htmlFor="enable-teams" className="font-bold text-meetings-ink">
                             Teams (beta)
                         </Label>
                     </div>
@@ -83,35 +82,35 @@ export default function App() {
                             disabled={zoom.pending}
                             onCheckedChange={(v) => zoom.toggle(v === true)}
                         />
-                        <Label htmlFor="enable-zoom" className="font-bold">
+                        <Label htmlFor="enable-zoom" className="font-bold text-meetings-ink">
                             Zoom (beta)
                         </Label>
                     </div>
-              </CardContent>
+              </div>
 
-              <hr />
+              <hr className="border-meetings-border" />
 
-              <CardContent>
+              <div className="p-4">
                 <RadioGroup value={operationMode} onValueChange={handleOperationModeChange} className="mb-4 gap-3">
                     <div className="flex items-start gap-2">
                         <RadioGroupItem value="auto" id="auto-mode" className="mt-0.5" />
                         <Label htmlFor="auto-mode" className="flex-col items-start font-normal">
-                            <span className="font-bold">Auto mode</span>
-                            <span className="text-muted-foreground">Get transcripts of all meetings</span>
+                            <span className="font-bold text-meetings-ink">Auto mode</span>
+                            <span className="text-meetings-ink-muted">Get transcripts of all meetings</span>
                         </Label>
                     </div>
                     <div className="flex items-start gap-2">
                         <RadioGroupItem value="manual" id="manual-mode" className="mt-0.5" />
                         <Label htmlFor="manual-mode" className="flex-col items-start font-normal">
-                            <span className="font-bold">Manual mode</span>
-                            <span className="text-muted-foreground">
+                            <span className="font-bold text-meetings-ink">Manual mode</span>
+                            <span className="text-meetings-ink-muted">
                                 Switch on transcript when needed during the meeting
                             </span>
                         </Label>
                     </div>
                 </RadioGroup>
 
-                <hr className="my-4" />
+                <hr className="my-4 border-meetings-border" />
 
                 <div className="flex items-center gap-2">
                     <Checkbox
@@ -119,44 +118,42 @@ export default function App() {
                         checked={hideCaptions}
                         onCheckedChange={(v) => handleHideCaptionsChange(v === true)}
                     />
-                    <Label htmlFor="hide-captions" className="font-bold">
+                    <Label htmlFor="hide-captions" className="font-bold text-meetings-ink">
                         Hide captions on the meeting UI
                     </Label>
                 </div>
-              </CardContent>
-            </Card>
+              </div>
+            </div>
 
-            <Card className="mb-4">
-              <CardContent className="flex items-center gap-4">
+            <div className="mb-4 flex items-center gap-4 border border-meetings-border p-4">
                 <div className="flex items-center gap-1">
                     <img className="h-6 w-auto" src={googleDocsIcon} alt="Google Docs logo" />
                     <img className="h-6 w-auto" src={notionIcon} alt="Notion logo" />
                 </div>
-                <p>
+                <p className="text-meetings-ink">
                     You can integrate TranscripTonic with your favourite tools like{" "}
                     <b>Google Docs, Notion, n8n and more</b> using{" "}
                     <button
                         type="button"
-                        className="text-primary font-bold underline underline-offset-4"
+                        className="font-bold text-meetings-ink underline underline-offset-4"
                         onClick={() => openMeetingsPage("integrations")}
                     >
                         integrations &rarr;
                     </button>
                 </p>
-              </CardContent>
-            </Card>
+            </div>
 
             <div className="mb-4 flex items-center justify-between gap-6">
                 <button
                     type="button"
-                    className="text-primary font-bold underline underline-offset-4"
+                    className="font-bold text-meetings-ink underline underline-offset-4"
                     onClick={() => openMeetingsPage()}
                 >
                     Open meetings &rarr;
                 </button>
                 <div>
                     <a
-                        className="text-primary font-bold underline underline-offset-4"
+                        className="font-bold text-meetings-ink underline underline-offset-4"
                         href="https://github.com/vivek-nexus/transcriptonic#readme"
                         target="_blank"
                         rel="noreferrer"
@@ -165,7 +162,7 @@ export default function App() {
                     </a>
                     <span className="mx-2">&#9679;</span>
                     <a
-                        className="text-primary font-bold underline underline-offset-4"
+                        className="font-bold text-meetings-ink underline underline-offset-4"
                         href="https://github.com/vivek-nexus/transcriptonic/issues"
                         target="_blank"
                         rel="noreferrer"
@@ -175,11 +172,11 @@ export default function App() {
                 </div>
             </div>
 
-            <p className="text-muted-foreground flex justify-between">
+            <p className="flex justify-between text-meetings-ink-muted">
                 <span>
                     v{version} /{" "}
                     <a
-                        className="text-primary font-bold underline underline-offset-4"
+                        className="font-bold text-meetings-ink underline underline-offset-4"
                         href="https://github.com/vivek-nexus/transcriptonic?tab=readme-ov-file#notice"
                         target="_blank"
                         rel="noreferrer"
@@ -190,7 +187,7 @@ export default function App() {
                 <span>
                     Another project by{" "}
                     <a
-                        className="text-primary font-bold underline underline-offset-4"
+                        className="font-bold text-meetings-ink underline underline-offset-4"
                         href="https://vivek-nexus.github.io"
                         target="_blank"
                         rel="noreferrer"

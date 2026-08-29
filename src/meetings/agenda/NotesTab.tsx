@@ -30,7 +30,7 @@ export default function NotesTab({ meeting, onSave }: NotesTabProps) {
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
                 placeholder="Notes for this meeting…"
-                className="min-h-48 rounded-none border-black/12 font-meetings-body text-sm"
+                className="min-h-48 rounded-none border-meetings-border font-meetings-body text-sm"
             />
         </div>
     )

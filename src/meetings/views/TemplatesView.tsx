@@ -306,12 +306,12 @@ export default function TemplatesView() {
             className="meetings-redesign"
             contentTitle={
                 <>
-                    <h1 className="font-meetings-heading flex-1 text-xl text-black/87">templates</h1>
+                    <h1 className="font-meetings-heading flex-1 text-xl text-meetings-ink">templates</h1>
                     <CircleIconButton label="Import template" icon={<UploadIcon />} onClick={openImportDialog} />
                     <button
                         type="button"
                         onClick={handleAddTemplate}
-                        className="flex h-9 shrink-0 items-center gap-2 rounded-full bg-black/87 pr-4 pl-2 text-sm font-medium text-white shadow-[0px_16px_16px_rgba(12,12,13,0.1),0px_4px_2px_rgba(12,12,13,0.05)] transition-opacity hover:opacity-90"
+                        className="flex h-9 shrink-0 items-center gap-2 rounded-full bg-meetings-ink pr-4 pl-2 text-sm font-medium text-meetings-surface shadow-[0px_16px_16px_rgba(12,12,13,0.1),0px_4px_2px_rgba(12,12,13,0.05)] transition-opacity hover:opacity-90"
                     >
                         <PlusIcon className="size-6" /> Add template
                     </button>
@@ -319,7 +319,7 @@ export default function TemplatesView() {
             }
             content={
                         <div className="flex flex-col">
-                            <p className="px-4 pt-4 pb-2 text-sm text-black/60">
+                            <p className="px-4 pt-4 pb-2 text-sm text-meetings-ink-muted">
                                 Create a summary template per meeting type, auto-selected by matching keywords against
                                 the meeting title. Meetings that don't match any template use the built-in default
                                 template.
@@ -330,8 +330,8 @@ export default function TemplatesView() {
                                         key={template.id}
                                         type="button"
                                         className={cn(
-                                            "flex h-16 items-center justify-between gap-2 px-4 text-left text-sm font-medium text-black/87",
-                                            selectedId === template.id && "bg-black/8",
+                                            "flex h-16 items-center justify-between gap-2 px-4 text-left text-sm font-medium text-meetings-ink",
+                                            selectedId === template.id && "bg-meetings-chip",
                                         )}
                                         onClick={() => {
                                             selectTemplate(template)
@@ -339,12 +339,12 @@ export default function TemplatesView() {
                                         }}
                                     >
                                         <span className="min-w-0 flex-1 truncate">{template.name}</span>
-                                        <KeyboardArrowRightIcon className="size-4 shrink-0 text-black/38" />
+                                        <KeyboardArrowRightIcon className="size-4 shrink-0 text-meetings-ink-faint" />
                                     </button>
                                 ))
                             ) : (
-                                <div className="mx-4 border border-black/12 p-4">
-                                    <p className="text-sm text-black/60">
+                                <div className="mx-4 border border-meetings-border p-4">
+                                    <p className="text-sm text-meetings-ink-muted">
                                         No templates yet — every meeting uses the built-in default template.
                                         Add a template to customize the notes for a specific kind of meeting
                                         (e.g. standups, sales calls, 1:1s).
@@ -357,7 +357,7 @@ export default function TemplatesView() {
                 selectedId ? (
                     <>
                         <MobileBackButton onClick={() => setMobileDetailOpen(false)} />
-                        <h2 className="font-meetings-heading truncate text-xl text-black/87">{name || "Untitled template"}</h2>
+                        <h2 className="font-meetings-heading truncate text-xl text-meetings-ink">{name || "Untitled template"}</h2>
                     </>
                 ) : null
             }
@@ -385,7 +385,7 @@ export default function TemplatesView() {
                                 disabled={selectedId === "default"}
                                 onChange={(e) => setKeywords(e.target.value)}
                             />
-                            <p className="mt-1 text-xs text-black/60">
+                            <p className="mt-1 text-xs text-meetings-ink-muted">
                                 {selectedId === "default"
                                     ? "\"Default\" always stays the fallback for meetings that don't match any other template, so its name and keywords are fixed — only its properties and note content are editable."
                                     : "Comma-separated, case-insensitive. Leave blank to use this template as the fallback for meetings that don't match any other template."}
@@ -394,9 +394,9 @@ export default function TemplatesView() {
 
                         <div>
                             <Label>Properties</Label>
-                            <p className="mt-1 text-xs text-black/60">
+                            <p className="mt-1 text-xs text-meetings-ink-muted">
                                 Frontmatter fields added to the top of the note. Values can be plain text, a{" "}
-                                <code className="bg-black/8 px-1">{"{{variable}}"}</code>, or a quoted
+                                <code className="bg-meetings-chip px-1">{"{{variable}}"}</code>, or a quoted
                                 AI instruction — see the reference below.
                             </p>
                             <div className="mt-1.5 flex flex-col gap-1">
@@ -482,17 +482,17 @@ export default function TemplatesView() {
                             />
                         </div>
 
-                        <div className="border border-black/12 p-4">
+                        <div className="border border-meetings-border p-4">
                             <div className="flex flex-col gap-2 text-xs">
-                                <p className="font-bold text-black/87">Syntax reference</p>
-                                <p className="text-black/87">
-                                    <code className="bg-black/8 px-1">{"{{variable}}"}</code> substitutes
+                                <p className="font-bold text-meetings-ink">Syntax reference</p>
+                                <p className="text-meetings-ink">
+                                    <code className="bg-meetings-chip px-1">{"{{variable}}"}</code> substitutes
                                     a meeting value directly.{" "}
-                                    <code className="bg-black/8 px-1">{'{{"instruction"|filter}}'}</code>{" "}
+                                    <code className="bg-meetings-chip px-1">{'{{"instruction"|filter}}'}</code>{" "}
                                     sends the quoted instruction to the LLM (all instructions in a template are
                                     batched into one request) and applies the filter to its answer.
                                 </p>
-                                <p className="text-black/87">
+                                <p className="text-meetings-ink">
                                     <span className="font-bold">Variables:</span>{" "}
                                     {[
                                         "title",
@@ -509,29 +509,29 @@ export default function TemplatesView() {
                                         .map((v) => `{{${v}}}`)
                                         .join(", ")}
                                 </p>
-                                <p className="text-black/87">
-                                    <code className="bg-black/8 px-1">{"{{transcript}}"}</code>/
-                                    <code className="bg-black/8 px-1">{"{{chatMessages}}"}</code> are the
+                                <p className="text-meetings-ink">
+                                    <code className="bg-meetings-chip px-1">{"{{transcript}}"}</code>/
+                                    <code className="bg-meetings-chip px-1">{"{{chatMessages}}"}</code> are the
                                     body text only — give them their own heading, e.g.{" "}
-                                    <code className="bg-black/8 px-1">{"## Transcript"}</code>. Using
+                                    <code className="bg-meetings-chip px-1">{"## Transcript"}</code>. Using
                                     either one replaces this app's automatic Transcript/Chat messages section at the
                                     end of the note, so it's never duplicated.
                                 </p>
-                                <p className="text-black/87">
+                                <p className="text-meetings-ink">
                                     <span className="font-bold">Filters:</span> list (
-                                    <code className="bg-black/8 px-1">{'list:"checkbox"'}</code> for a
+                                    <code className="bg-meetings-chip px-1">{'list:"checkbox"'}</code> for a
                                     checklist), timestamped (validates and appends a{" "}
-                                    <code className="bg-black/8 px-1">{"[M:SS]"}</code> citation copied
+                                    <code className="bg-meetings-chip px-1">{"[M:SS]"}</code> citation copied
                                     from the transcript — combine as{" "}
-                                    <code className="bg-black/8 px-1">{"|list|timestamped"}</code>),
+                                    <code className="bg-meetings-chip px-1">{"|list|timestamped"}</code>),
                                     wikilink, kebab, lower, upper, trim,{" "}
-                                    <code className="bg-black/8 px-1">{'date:"YYYY-MM-DD"'}</code>,{" "}
-                                    <code className="bg-black/8 px-1">{'replace:("pattern":"replacement")'}</code>
-                                    , <code className="bg-black/8 px-1">{"slice:0,3"}</code>,{" "}
-                                    <code className="bg-black/8 px-1">{'join:", "'}</code>,{" "}
-                                    <code className="bg-black/8 px-1">{'split:","'}</code>.
+                                    <code className="bg-meetings-chip px-1">{'date:"YYYY-MM-DD"'}</code>,{" "}
+                                    <code className="bg-meetings-chip px-1">{'replace:("pattern":"replacement")'}</code>
+                                    , <code className="bg-meetings-chip px-1">{"slice:0,3"}</code>,{" "}
+                                    <code className="bg-meetings-chip px-1">{'join:", "'}</code>,{" "}
+                                    <code className="bg-meetings-chip px-1">{'split:","'}</code>.
                                 </p>
-                                <p className="text-black/87">
+                                <p className="text-meetings-ink">
                                     A property typed <span className="font-bold">List</span> splits its resolved
                                     value on commas into separate frontmatter list items.
                                 </p>
@@ -559,7 +559,7 @@ export default function TemplatesView() {
                         </div>
                     </div>
                 ) : (
-                    <p className="px-4 text-sm text-black/60">Select a template to see its details.</p>
+                    <p className="px-4 text-sm text-meetings-ink-muted">Select a template to see its details.</p>
                 )
             }
             mobileDetailOpen={mobileDetailOpen}

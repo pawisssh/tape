@@ -26,8 +26,8 @@ const CircleIconButton = React.forwardRef<HTMLButtonElement, CircleIconButtonPro
                         type="button"
                         aria-label={label}
                         className={cn(
-                            "flex size-9 shrink-0 items-center justify-center rounded-full text-black/87 transition-opacity hover:opacity-70 disabled:pointer-events-none disabled:opacity-50 [&_svg]:size-6",
-                            !bare && "bg-white shadow-[0px_16px_16px_rgba(12,12,13,0.1),0px_4px_2px_rgba(12,12,13,0.05)]",
+                            "flex size-9 shrink-0 items-center justify-center rounded-full text-meetings-ink transition-opacity hover:opacity-70 disabled:pointer-events-none disabled:opacity-50 [&_svg]:size-6",
+                            !bare && "bg-meetings-card shadow-[0px_16px_16px_rgba(12,12,13,0.1),0px_4px_2px_rgba(12,12,13,0.05)]",
                             className,
                         )}
                         {...props}

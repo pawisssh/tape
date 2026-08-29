@@ -24,11 +24,19 @@ interface OperationStatusBarProps {
 // `onDismiss` is best-effort only — it just hides the bar (clears `operation`). There is
 // no cancellation primitive anywhere in this codebase's messaging/LLM layers to actually
 // abort the in-flight sendMessage/runSaveToObsidianFlow call, so the underlying work keeps
-// running silently; `operation` being keyed by meeting id (see MeetingsView.tsx) makes
-// that a safe no-op once it resolves.
+// running silently. Two things keep that safe: `operation` being keyed by meeting id (see
+// MeetingsView.tsx) means a stale resolution for a meeting the user has since navigated
+// away from can't clobber a different meeting's bar; and MeetingDetail.tsx /
+// MeetingDetailToolbar.tsx both guard their `onOperationChange` calls behind an
+// isMountedRef so a resolution landing after the *specific meeting instance* that started
+// it has unmounted (e.g. the user picked a different meeting mid-flight) is dropped
+// instead of racing a newer operation. `operation` itself is chrome.storage.local-backed
+// (not plain useState), so it also survives switching to another sidebar page and back —
+// deliberately, so a genuinely-still-running operation keeps showing on return instead of
+// the UI silently forgetting about it.
 export default function OperationStatusBar({ label, onDismiss }: OperationStatusBarProps) {
     return (
-        <div className="sticky bottom-0 flex h-9 w-full shrink-0 items-center justify-between overflow-hidden border-t border-black/12 bg-white pr-2 pl-4">
+        <div className="sticky bottom-0 flex h-9 w-full shrink-0 items-center justify-between overflow-hidden border-t border-meetings-border bg-meetings-card pr-2 pl-4">
             <div
                 className="pointer-events-none absolute inset-y-0 left-0 w-1/2"
                 style={{
@@ -42,14 +50,14 @@ export default function OperationStatusBar({ label, onDismiss }: OperationStatus
                 }}
                 aria-hidden
             />
-            <span className="font-meetings-mono relative shrink-0 text-[10px] font-medium tracking-wide text-black/87 uppercase">
+            <span className="font-meetings-mono relative shrink-0 text-[10px] font-medium tracking-wide text-meetings-ink uppercase">
                 {label}
             </span>
             <button
                 type="button"
                 aria-label="Dismiss"
                 onClick={onDismiss}
-                className="relative flex size-9 shrink-0 items-center justify-center rounded-full bg-white text-black/87 shadow-[0px_16px_16px_rgba(12,12,13,0.1),0px_4px_2px_rgba(12,12,13,0.05)] transition-opacity hover:opacity-70"
+                className="relative flex size-9 shrink-0 items-center justify-center rounded-full bg-meetings-card text-meetings-ink shadow-[0px_16px_16px_rgba(12,12,13,0.1),0px_4px_2px_rgba(12,12,13,0.05)] transition-opacity hover:opacity-70"
             >
                 <StopFillIcon className="size-4" />
             </button>

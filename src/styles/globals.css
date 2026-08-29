@@ -22,6 +22,14 @@
     --font-meetings-body: 'Roboto Flex Variable', sans-serif;
     --font-meetings-mono: 'Space Mono', monospace;
     --color-meetings-accent: #f34f16;
+    --color-meetings-ink: var(--meetings-ink);
+    --color-meetings-ink-muted: var(--meetings-ink-muted);
+    --color-meetings-ink-faint: var(--meetings-ink-faint);
+    --color-meetings-border: var(--meetings-border);
+    --color-meetings-chip: var(--meetings-chip);
+    --color-meetings-chip-neutral: var(--meetings-chip-neutral);
+    --color-meetings-surface: var(--meetings-surface);
+    --color-meetings-card: var(--meetings-card);
     --color-sidebar-ring: var(--sidebar-ring);
     --color-sidebar-border: var(--sidebar-border);
     --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -155,8 +163,43 @@
    correct for every other still-unredesigned entry point — popup/side-panel/handoff — so
    it's overridden here rather than changed globally), and should match the redesign's
    base #f6f6f6 rather than staying white so the app frame doesn't float in a white halo. */
+/* Light/dark values for the meetings-redesign's own semantic tokens (--color-meetings-ink
+   etc., registered above in @theme inline) — same "custom properties flipped by a .dark
+   ancestor class" mechanism the original shadcn :root/.dark tokens already use, driven by
+   the same src/lib/system-theme.ts watchSystemTheme() listener (already wired into every
+   entry point's main.tsx) that toggles .dark on <html> from prefers-color-scheme. Scoped
+   to .meetings-redesign/.meetings-page-body specifically (not :root) since the rest of the
+   still-unredesigned extension surfaces (none remain as of this pass, but this stays the
+   deliberate boundary) shouldn't be affected by this palette.
+   SidebarStatusBar.tsx's bg-black/text-white and src/side-panel/App.tsx are intentionally
+   NOT wired to these tokens — both stay permanently dark by design, independent of theme. */
+.meetings-redesign,
 .meetings-page-body {
-    background-color: #f6f6f6;
+    --meetings-ink: rgba(0, 0, 0, 0.87);
+    --meetings-ink-muted: rgba(0, 0, 0, 0.6);
+    --meetings-ink-faint: rgba(0, 0, 0, 0.38);
+    --meetings-border: rgba(0, 0, 0, 0.12);
+    --meetings-chip: rgba(0, 0, 0, 0.08);
+    --meetings-chip-neutral: #d9d9d9;
+    --meetings-surface: #f6f6f6;
+    --meetings-card: #ffffff;
+}
+.dark .meetings-redesign,
+.dark.meetings-redesign,
+.dark .meetings-page-body,
+.dark.meetings-page-body {
+    --meetings-ink: rgba(255, 255, 255, 0.87);
+    --meetings-ink-muted: rgba(255, 255, 255, 0.6);
+    --meetings-ink-faint: rgba(255, 255, 255, 0.38);
+    --meetings-border: rgba(255, 255, 255, 0.12);
+    --meetings-chip: rgba(255, 255, 255, 0.08);
+    --meetings-chip-neutral: #3a3a3c;
+    --meetings-surface: #1c1c1e;
+    --meetings-card: #2c2c2e;
+}
+
+.meetings-page-body {
+    background-color: var(--meetings-surface);
 }
 
 .meetings-redesign {
@@ -168,7 +211,7 @@
        explicit color on top of this. Neither the Sidebar container nor
        MasterDetailLayout's root sets its own background otherwise, so this one rule
        (applied to both via the shared .meetings-redesign class) is the single source. */
-    background-color: #f6f6f6;
+    background-color: var(--meetings-surface);
 }
 .meetings-redesign .font-meetings-heading {
     font-family: var(--font-meetings-heading);

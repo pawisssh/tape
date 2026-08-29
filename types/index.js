@@ -8,6 +8,11 @@
  * @typedef {number | "processing" | null} MeetingTabId tab id of the meeting tab, captured when meeting starts. A valid value or "processing" indicates that a meeting is in progress. Set to null once meeting ends and associated processing is complete.
  */
 /**
+ * @typedef {Object} MeetingOperation Which meeting has a Run (save-to-Obsidian) or template-regenerate in flight, and what to label the sticky status bar with. Storage-backed (not plain React state) so it survives switching between the Meetings/Integrations/Templates/Settings pages and the mobile list/detail view — see src/meetings/views/MeetingsView.tsx.
+ * @property {string} meetingId stable id (see obsidian/store.js getMeetingId) of the meeting the operation is running for
+ * @property {string} label current step's sticky-bar label, e.g. "Summarizing…"
+ */
+/**
  * @typedef {string} MeetingStartTimestamp ISO timestamp of when the most recent meeting started, dumped by content script
  */
 /**
@@ -165,6 +170,7 @@
  * @typedef {Object} ResultLocal Local chrome storage
  * @property {ExtensionStatusJSON} extensionStatusJSON
  * @property {MeetingTabId} meetingTabId
+ * @property {MeetingOperation | null | undefined} activeMeetingOperation
  * @property {MeetingSoftware} meetingSoftware
  * @property {MeetingTitle} meetingTitle
  * @property {MeetingStartTimestamp} meetingStartTimestamp

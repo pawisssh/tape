@@ -17,7 +17,7 @@ export default function TranscriptTab({ transcript }: TranscriptTabProps) {
     const turns = groupTranscriptBySpeaker(transcript)
 
     if (turns.length === 0) {
-        return <p className="px-4 py-4 text-sm text-black/60">No transcript captured for this meeting.</p>
+        return <p className="px-4 py-4 text-sm text-meetings-ink-muted">No transcript captured for this meeting.</p>
     }
 
     return (
@@ -25,10 +25,10 @@ export default function TranscriptTab({ transcript }: TranscriptTabProps) {
             {turns.map((turn, i) => (
                 <div key={i}>
                     <p className="mb-1 flex items-baseline gap-2">
-                        <span className="font-meetings-heading text-sm font-medium text-black/87">{turn.personName}</span>
-                        <span className="font-meetings-mono text-[10px] text-black/38">{formatTurnTime(turn.timestamp)}</span>
+                        <span className="font-meetings-heading text-sm font-medium text-meetings-ink">{turn.personName}</span>
+                        <span className="font-meetings-mono text-[10px] text-meetings-ink-faint">{formatTurnTime(turn.timestamp)}</span>
                     </p>
-                    <p className="text-sm whitespace-pre-wrap text-black/60">{turn.text}</p>
+                    <p className="text-sm whitespace-pre-wrap text-meetings-ink-muted">{turn.text}</p>
                 </div>
             ))}
         </div>

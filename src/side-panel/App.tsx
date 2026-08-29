@@ -26,15 +26,15 @@ function TranscriptBlockItem({
     return (
         <div className="mb-5">
             <div className="mb-1 flex items-center justify-between gap-2 text-xs">
-                <span className="text-muted-foreground flex items-center gap-1.5">
+                <span className="flex items-center gap-1.5 text-white/38">
                     {personName}
                     {isLive ? (
-                        <span aria-hidden className="bg-primary inline-block size-1.5 animate-pulse rounded-full" />
+                        <span aria-hidden className="bg-meetings-accent inline-block size-1.5 animate-pulse" />
                     ) : null}
                 </span>
-                <span className="text-muted-foreground">{timeString}</span>
+                <span className="text-white/38">{timeString}</span>
             </div>
-            <p className={`text-sm leading-relaxed break-words ${isLive ? "text-foreground/70 italic" : ""}`}>
+            <p className={`text-sm leading-relaxed break-words text-white ${isLive ? "text-white/70 italic" : ""}`}>
                 {text}
             </p>
         </div>
@@ -116,36 +116,49 @@ export default function App() {
     }
 
     return (
-        <div className="dark bg-background text-foreground flex h-screen flex-col">
-            <div className="bg-sidebar border-sidebar-border border-b px-4 py-3">
-                <h1
-                    contentEditable
-                    suppressContentEditableWarning
-                    onBlur={handleTitleBlur}
-                    onKeyDown={handleTitleKeyDown}
-                    className="rounded p-0.5 text-sm font-bold outline-none hover:outline hover:outline-muted-foreground"
-                >
-                    {meetingTitle}
-                </h1>
-            </div>
+        // `meetings-redesign` and `bg-black` are deliberately on separate elements, not
+        // combined on one div: `.meetings-redesign` (globals.css) sets its own
+        // `background-color: #f6f6f6` as a plain unlayered CSS rule, which — per the CSS
+        // cascade-layers spec — always wins over a Tailwind utility class like `bg-black`
+        // (emitted inside `@layer utilities`) regardless of className order, so putting
+        // both on the same element would silently render #f6f6f6 instead of black. The
+        // outer div only needs `meetings-redesign` for font-family inheritance (needed by
+        // `font-meetings-heading` below, which resolves via a `.meetings-redesign
+        // .font-meetings-heading` descendant selector) — its own background never shows
+        // since the inner div fully covers it. Same split App.tsx already uses for
+        // SidebarStatusBar.tsx's bg-black.
+        <div className="meetings-redesign dark h-screen">
+            <div className="flex h-full flex-col bg-black text-white">
+                <div className="border-b border-white/12 px-4 py-3">
+                    <h1
+                        contentEditable
+                        suppressContentEditableWarning
+                        onBlur={handleTitleBlur}
+                        onKeyDown={handleTitleKeyDown}
+                        className="font-meetings-heading rounded-none p-0.5 text-sm outline-none hover:outline hover:outline-white/24"
+                    >
+                        {meetingTitle}
+                    </h1>
+                </div>
 
-            <div ref={containerRef} className="flex-1 overflow-y-auto p-4">
-                {transcript.map((block, i) => (
-                    <TranscriptBlockItem
-                        key={i}
-                        personName={block.personName}
-                        timestamp={block.timestamp}
-                        text={block.transcriptText}
-                    />
-                ))}
-                {liveBlock ? (
-                    <TranscriptBlockItem
-                        personName={liveBlock.personName}
-                        timestamp={liveBlock.timestamp}
-                        text={liveBlock.transcriptTextBuffer}
-                        isLive
-                    />
-                ) : null}
+                <div ref={containerRef} className="flex-1 overflow-y-auto p-4">
+                    {transcript.map((block, i) => (
+                        <TranscriptBlockItem
+                            key={i}
+                            personName={block.personName}
+                            timestamp={block.timestamp}
+                            text={block.transcriptText}
+                        />
+                    ))}
+                    {liveBlock ? (
+                        <TranscriptBlockItem
+                            personName={liveBlock.personName}
+                            timestamp={liveBlock.timestamp}
+                            text={liveBlock.transcriptTextBuffer}
+                            isLive
+                        />
+                    ) : null}
+                </div>
             </div>
         </div>
     )

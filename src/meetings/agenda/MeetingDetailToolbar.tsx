@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -30,8 +30,8 @@ interface MeetingDetailToolbarProps {
     onTemplateOverrideChange: (templateOverrideId: string | undefined) => Promise<void>
     // Lifted to MeetingsView.tsx (shared with MeetingDetail.tsx's Run flow) and keyed by
     // meeting id — see MeetingDetail.tsx's own doc comment on this same prop pair.
-    operation: { meetingId: string; label: string } | null
-    onOperationChange: (operation: { meetingId: string; label: string } | null) => void
+    operation: MeetingOperation | null
+    onOperationChange: (operation: MeetingOperation | null) => void
 }
 
 // Rendered in MeetingsView.tsx's `detailTitle` slot — MasterDetailLayout's sticky h-16
@@ -57,6 +57,17 @@ export default function MeetingDetailToolbar({
     // Stable id — must match extension/obsidian/store.js's getMeetingId().
     const meetingId = meeting.meetingStartTimestamp
     const busy = operation?.meetingId === meetingId
+
+    // This component remounts per-meeting (see MeetingsView.tsx's `key={...meetingId}`),
+    // but the summarize_meeting_now message isn't cancellable on unmount — see
+    // MeetingDetail.tsx's identical guard on its Run flow for the full rationale.
+    const isMountedRef = useRef(true)
+    useEffect(() => {
+        isMountedRef.current = true
+        return () => {
+            isMountedRef.current = false
+        }
+    }, [])
 
     function handleDownload() {
         sendMessage({ type: "download_transcript_at_index", index }).then((response) => {
@@ -104,7 +115,7 @@ export default function MeetingDetailToolbar({
     async function regenerateSummary() {
         onOperationChange({ meetingId, label: "Summarizing…" })
         const response = await sendMessage({ type: "summarize_meeting_now", meetingId })
-        onOperationChange(null)
+        if (isMountedRef.current) onOperationChange(null)
         onChanged()
         if (response.success) {
             toast.add({ title: "Summary ready", type: "success" })
@@ -134,7 +145,7 @@ export default function MeetingDetailToolbar({
             <FollowUpTemplatePicker value={meeting.templateOverrideId} disabled={busy} onChange={handleTemplatePickerChange} />
 
             <div className="flex items-center gap-2">
-                <div className="flex items-center gap-0 rounded-full bg-white p-1 shadow-[0px_16px_16px_rgba(12,12,13,0.1),0px_4px_2px_rgba(12,12,13,0.05)]">
+                <div className="flex items-center gap-0 rounded-full bg-meetings-card p-1 shadow-[0px_16px_16px_rgba(12,12,13,0.1),0px_4px_2px_rgba(12,12,13,0.05)]">
                     <CircleIconButton bare label="Copy transcript" icon={<ContentCopyIcon />} onClick={handleCopyTranscript} />
                     <CircleIconButton bare label="Download transcript" icon={<DownloadIcon />} onClick={handleDownload} />
                 </div>

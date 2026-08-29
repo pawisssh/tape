@@ -213,26 +213,26 @@ export default function WebhookSection() {
                 <div className="flex items-start gap-2">
                     <RadioGroupItem value="simple" id="simple-webhook-body" className="mt-0.5" />
                     <Label htmlFor="simple-webhook-body" className="flex-col items-start font-normal">
-                        <span className="font-bold text-black/87">Simple webhook body</span>
-                        <span className="text-black/60">Pre-formatted data, suitable for no-code integrations</span>
+                        <span className="font-bold text-meetings-ink">Simple webhook body</span>
+                        <span className="text-meetings-ink-muted">Pre-formatted data, suitable for no-code integrations</span>
                     </Label>
                 </div>
                 <div className="flex items-start gap-2">
                     <RadioGroupItem value="advanced" id="advanced-webhook-body" className="mt-0.5" />
                     <Label htmlFor="advanced-webhook-body" className="flex-col items-start font-normal">
-                        <span className="font-bold text-black/87">Advanced webhook body</span>
-                        <span className="text-black/60">Raw data, suitable for code integrations</span>
+                        <span className="font-bold text-meetings-ink">Advanced webhook body</span>
+                        <span className="text-meetings-ink-muted">Raw data, suitable for code integrations</span>
                     </Label>
                 </div>
             </RadioGroup>
 
             <Separator className="my-4" />
 
-            <p className="font-bold text-black/87">Webhook help</p>
-            <p className="mt-1 mb-3 text-sm text-black/60">Integration guides</p>
+            <p className="font-bold text-meetings-ink">Webhook help</p>
+            <p className="mt-1 mb-3 text-sm text-meetings-ink-muted">Integration guides</p>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <a
-                    className="flex items-start gap-2 border border-meetings-accent p-2 font-bold text-black/87"
+                    className="flex items-start gap-2 border border-meetings-accent p-2 font-bold text-meetings-ink"
                     href="https://github.com/vivek-nexus/transcriptonic/wiki/Google-Docs-integration-guide?utm_source=extension"
                     target="_blank"
                     rel="noreferrer"
@@ -241,7 +241,7 @@ export default function WebhookSection() {
                     <span>Get transcripts on Google Docs</span>
                 </a>
                 <a
-                    className="flex items-start gap-2 border border-meetings-accent p-2 font-bold text-black/87"
+                    className="flex items-start gap-2 border border-meetings-accent p-2 font-bold text-meetings-ink"
                     href="https://github.com/vivek-nexus/transcriptonic/wiki/n8n-integration-guide?utm_source=extension"
                     target="_blank"
                     rel="noreferrer"
@@ -251,20 +251,20 @@ export default function WebhookSection() {
                 </a>
             </div>
             <Separator className="my-4" />
-            <p className="font-bold text-black/87">Webhook JSON body</p>
+            <p className="font-bold text-meetings-ink">Webhook JSON body</p>
             <div>
                 <Collapsible>
-                    <CollapsibleTrigger className="font-bold text-black/87">Webhook body (simple)</CollapsibleTrigger>
+                    <CollapsibleTrigger className="font-bold text-meetings-ink">Webhook body (simple)</CollapsibleTrigger>
                     <CollapsibleContent>
-                        <pre className="my-4 overflow-x-auto border border-black/12 bg-black/5 p-4 text-xs leading-relaxed">
+                        <pre className="my-4 overflow-x-auto border border-meetings-border bg-meetings-chip p-4 text-xs leading-relaxed">
                             {SIMPLE_BODY_EXAMPLE}
                         </pre>
                     </CollapsibleContent>
                 </Collapsible>
                 <Collapsible>
-                    <CollapsibleTrigger className="font-bold text-black/87">Webhook body (advanced)</CollapsibleTrigger>
+                    <CollapsibleTrigger className="font-bold text-meetings-ink">Webhook body (advanced)</CollapsibleTrigger>
                     <CollapsibleContent>
-                        <pre className="my-4 overflow-x-auto border border-black/12 bg-black/5 p-4 text-xs leading-relaxed">
+                        <pre className="my-4 overflow-x-auto border border-meetings-border bg-meetings-chip p-4 text-xs leading-relaxed">
                             {ADVANCED_BODY_EXAMPLE}
                         </pre>
                     </CollapsibleContent>

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react"
-import { getLocal, onStorageChanged, setLocal } from "@/lib/chrome-storage"
+import { getLocal, onStorageChanged, removeLocal, setLocal } from "@/lib/chrome-storage"
 import { sendMessage } from "@/lib/messaging"
 import { toast } from "@/components/ui/toast"
 import CircleIconButton from "../ui/CircleIconButton"
@@ -23,7 +23,36 @@ export default function MeetingsView() {
     // `detail` slots) that both need to read/drive the same sticky status bar. Keyed by
     // meeting id so a stale resolution for a meeting the user has since navigated away
     // from can't clobber whichever meeting's bar is currently showing.
-    const [operation, setOperation] = useState<{ meetingId: string; label: string } | null>(null)
+    //
+    // Backed by chrome.storage.local (`activeMeetingOperation`, mirroring meetingTabId's
+    // pattern in use-live-capture-state.ts) rather than plain useState, so it's a single
+    // source of truth independent of this component's own mount lifetime: switching to
+    // another sidebar page (Integrations/Templates/Settings) unmounts this whole view and
+    // would otherwise silently forget an operation that's still genuinely running in the
+    // background — storage means it's correctly restored if the user comes back to
+    // Meetings before it finishes, and correctly absent once it's actually done.
+    const [operation, setOperationState] = useState<MeetingOperation | null>(null)
+
+    useEffect(() => {
+        getLocal<ResultLocal>(["activeMeetingOperation"]).then((result) => {
+            setOperationState(result.activeMeetingOperation ?? null)
+        })
+        return onStorageChanged((changes, area) => {
+            if (area === "local" && changes.activeMeetingOperation) {
+                setOperationState((changes.activeMeetingOperation.newValue as MeetingOperation | undefined) ?? null)
+            }
+        })
+    }, [])
+
+    function setOperation(next: MeetingOperation | null) {
+        setOperationState(next)
+        if (next) {
+            setLocal({ activeMeetingOperation: next })
+        } else {
+            removeLocal("activeMeetingOperation")
+        }
+    }
+
     const importFileInputRef = useRef<HTMLInputElement>(null)
 
     function loadMeetings() {
@@ -160,7 +189,7 @@ export default function MeetingsView() {
             className="meetings-redesign"
             contentTitle={
                 <>
-                    <h1 className="font-meetings-heading flex-1 text-xl text-black/87">meetings</h1>
+                    <h1 className="font-meetings-heading flex-1 text-xl text-meetings-ink">meetings</h1>
                     <input
                         ref={importFileInputRef}
                         type="file"
@@ -184,7 +213,7 @@ export default function MeetingsView() {
                                     <span
                                         className={
                                             "font-meetings-heading text-sm font-medium lowercase " +
-                                            (group.isToday ? "text-meetings-accent" : "text-black/38")
+                                            (group.isToday ? "text-meetings-accent" : "text-meetings-ink-faint")
                                         }
                                     >
                                         {group.label}
@@ -192,7 +221,7 @@ export default function MeetingsView() {
                                     <span
                                         className={
                                             "font-meetings-heading text-sm " +
-                                            (group.isToday ? "font-bold text-meetings-accent" : "font-medium text-black/38")
+                                            (group.isToday ? "font-bold text-meetings-accent" : "font-medium text-meetings-ink-faint")
                                         }
                                     >
                                         {group.meetings.length}
@@ -212,7 +241,7 @@ export default function MeetingsView() {
                             </div>
                         ))
                     ) : (
-                        <p className="px-4 py-4 text-sm text-black/60">Your next meeting will show up here.</p>
+                        <p className="px-4 py-4 text-sm text-meetings-ink-muted">Your next meeting will show up here.</p>
                     )}
                 </div>
             }

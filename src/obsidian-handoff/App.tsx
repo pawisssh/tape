@@ -30,11 +30,11 @@ const INITIAL_STEPS: StepState[] = [
 ]
 
 const statusStyles: Record<StepStatus, string> = {
-    pending: "bg-muted text-muted-foreground",
-    active: "bg-blue-500/15 text-blue-600 dark:text-blue-400",
-    done: "bg-green-500/15 text-green-600 dark:text-green-400",
-    skipped: "bg-muted text-muted-foreground",
-    failed: "bg-destructive/15 text-destructive",
+    pending: "text-meetings-ink-faint",
+    active: "text-meetings-accent",
+    done: "text-meetings-ink",
+    skipped: "text-meetings-ink-faint",
+    failed: "text-destructive",
 }
 
 const statusLabels: Record<StepStatus, string> = {
@@ -113,18 +113,20 @@ export default function App() {
     }
 
     return (
-        <div className="mx-auto max-w-xl p-10">
-            <h1 className="mb-4 text-2xl font-bold">Save to Obsidian</h1>
-            <div className="bg-muted/40 rounded-lg p-6">
-                <div className="mb-4 font-bold">{meetingTitle}</div>
+        <div className="meetings-redesign mx-auto max-w-xl p-10">
+            <h1 className="font-meetings-heading mb-4 text-2xl text-meetings-ink">Save to Obsidian</h1>
+            <div className="border border-meetings-border p-6">
+                <div className="mb-4 font-bold text-meetings-ink">{meetingTitle}</div>
 
                 <ol className="mb-4 flex flex-col gap-2">
                     {steps.map((step) => (
                         <li key={step.id} className="flex items-center justify-between gap-4 text-sm">
-                            <span>{step.label}</span>
+                            <span className="text-meetings-ink">{step.label}</span>
                             <span className="flex items-center gap-2">
-                                {step.detail ? <span className="text-muted-foreground text-xs">{step.detail}</span> : null}
-                                <span className={`rounded px-2 py-0.5 text-xs font-bold ${statusStyles[step.status]}`}>
+                                {step.detail ? <span className="text-xs text-meetings-ink-muted">{step.detail}</span> : null}
+                                <span
+                                    className={`font-meetings-mono text-[10px] font-medium tracking-wide uppercase ${statusStyles[step.status]}`}
+                                >
                                     {statusLabels[step.status]}
                                 </span>
                             </span>
@@ -132,20 +134,25 @@ export default function App() {
                     ))}
                 </ol>
 
-                <p className="mb-4 leading-relaxed">{finalMessage}</p>
+                <p className="mb-4 leading-relaxed text-meetings-ink">{finalMessage}</p>
 
                 <div className="flex items-center gap-2">
                     {retryable ? (
-                        <Button type="button" onClick={handleRetry}>
+                        <Button type="button" className="rounded-none" onClick={handleRetry}>
                             Retry
                         </Button>
                     ) : null}
-                    <Button type="button" variant={retryable ? "outline" : "default"} onClick={() => window.close()}>
+                    <Button
+                        type="button"
+                        variant={retryable ? "outline" : "default"}
+                        className="rounded-none"
+                        onClick={() => window.close()}
+                    >
                         Close this tab
                     </Button>
                 </div>
 
-                <p className="text-muted-foreground mt-6 text-xs">
+                <p className="mt-6 text-xs text-meetings-ink-muted">
                     If Chrome asks "Open Obsidian?", click Allow (and "Always allow" to skip this prompt for future
                     meetings). This prompt is tab-modal — closing this tab before answering it will dismiss the
                     prompt without opening Obsidian.

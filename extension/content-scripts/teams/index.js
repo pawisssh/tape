@@ -39,15 +39,24 @@ function initTeams() {
       checkExtensionStatus(state).finally(() => {
         console.log("Extension status " + state.extensionStatusJSON.status)
 
-        // Enable extension functions only if status is 200
-        if (state.extensionStatusJSON.status === 200) {
+        // Skip starting capture routines entirely when the user has turned capture off.
+        chrome.storage.sync.get(["operationMode"], function (resultSyncUntyped) {
+          const resultSync = /** @type {ResultSync} */ (resultSyncUntyped)
+          if (resultSync.operationMode === "off") {
+            console.log("Capture mode is off, not starting capture routines")
+            return
+          }
 
-          teamsMeetingRoutines(state)
-        }
-        else {
-          // Show downtime message as extension status is 400
-          showNotificationTeams(state.extensionStatusJSON)
-        }
+          // Enable extension functions only if status is 200
+          if (state.extensionStatusJSON.status === 200) {
+
+            teamsMeetingRoutines(state)
+          }
+          else {
+            // Show downtime message as extension status is 400
+            showNotificationTeams(state.extensionStatusJSON)
+          }
+        })
       })
     })
 }

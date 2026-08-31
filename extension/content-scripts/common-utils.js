@@ -158,29 +158,6 @@ async function waitForElement(selector, text, iframe = null) {
 }
 
 /**
- * @description Waits until an element matching the selector has the specified computed CSS property value.
- * @param {string} selector - The selector to query (e.g., 'div[role="region"]')
- * @param {string} cssProp - The camelCase or kebab-case CSS property (e.g., 'containerName')
- * @param {string} cssPropValue - The expected value of the CSS property (e.g., 'captions-history')
- */
-async function waitForElementByStyle(selector, cssProp, cssPropValue) {
-    while (true) {
-        const elements = Array.from(document.querySelectorAll(selector))
-        const matchedElement = elements.find(element => {
-            const computedStyle = window.getComputedStyle(element)
-            // Cast the string to a valid key type of CSSStyleDeclaration to satisfy the compiler
-            return computedStyle[/** @type {keyof CSSStyleDeclaration} */ (cssProp)] === cssPropValue
-        })
-
-        if (matchedElement) {
-            return matchedElement
-        }
-
-        await new Promise((resolve) => requestAnimationFrame(resolve))
-    }
-}
-
-/** 
  * @description Single, flat polling monitor that handles initial attachment and all re-attachments.
  * @param {ContentScriptState} state
  */
@@ -363,8 +340,8 @@ function renderFab() {
         display: flex;
         align-items: center;
         justify-content: center;
-        background-color: #071f29;
-        box-shadow: 0px 0px 4px 0px #2A9ACA;
+        background-color: #2c2c2e;
+        box-shadow: 0 0 0 1.5px #f34f16, 0px 8px 16px rgba(0,0,0,0.35);
         cursor: pointer;
         border: none;
         padding: 0;
@@ -378,15 +355,13 @@ function renderFab() {
     fab.title = "TranscripTonic"
     fab.style.cssText = fabCss
 
-    const logoUrl = "https://ejnana.github.io/transcripto-status/icon.png"
-
     fab.innerHTML = `
         <div id="fab-main-content" style="display: flex; align-items: center; justify-content: center; width: 100%; height: 100%;">
-            <img id="fab-default-logo" src="${logoUrl}" alt="TranscripTonic" draggable="false" style="width: 20px; height: 20px; object-fit: contain;" />
-            <span id="fab-letter-mark" style="display: none; color: #ffffff; font-weight: bold; font-size: 16px; text-transform: uppercase; font-family: sans-serif;"></span>
+            <img id="fab-default-logo" src="${LOGO_URL}" alt="TranscripTonic" draggable="false" style="width: 20px; height: 20px; object-fit: contain;" />
+            <span id="fab-letter-mark" style="display: none; color: rgba(255,255,255,0.87); font-weight: bold; font-size: 16px; text-transform: uppercase; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;"></span>
         </div>
 
-        <img id="fab-mini-badge" src="${logoUrl}" alt="Active Badge" draggable="false" style="
+        <img id="fab-mini-badge" src="${LOGO_URL}" alt="Active Badge" draggable="false" style="
             display: none;
             position: absolute;
             bottom: -2px;
@@ -394,8 +369,8 @@ function renderFab() {
             width: 14px;
             height: 14px;
             border-radius: 50%;
-            background-color: #071f29;
-            box-shadow: 0 0 2px rgba(0,0,0,0.5);
+            background-color: #2c2c2e;
+            box-shadow: 0 0 0 1px rgba(255,255,255,0.12);
             object-fit: contain;
             pointer-events: none;
         " />

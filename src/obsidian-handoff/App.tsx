@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react"
 import { Button } from "@/components/ui/button"
 import { writeTextWithFallback } from "@/lib/clipboard"
+import { CircleIcon, ProgressActivityIcon, CheckCircleFillIcon, ErrorIcon } from "@/meetings/ui/icons"
+import { cn } from "@/lib/utils"
 
 // Framework-free logic module, imported directly — never duplicated into src/. See
 // PLAN.md §6 Phase 5 "Structural rule to preserve". This page no longer owns the actual
@@ -43,6 +45,14 @@ const statusLabels: Record<StepStatus, string> = {
     done: "Done",
     skipped: "Skipped",
     failed: "Failed",
+}
+
+const statusIcons: Record<StepStatus, typeof CircleIcon> = {
+    pending: CircleIcon,
+    active: ProgressActivityIcon,
+    done: CheckCircleFillIcon,
+    skipped: CircleIcon,
+    failed: ErrorIcon,
 }
 
 const SUCCESS_MESSAGE: Record<"inline" | "clipboard", string> = {
@@ -113,50 +123,61 @@ export default function App() {
     }
 
     return (
-        <div className="meetings-redesign mx-auto max-w-xl p-10">
-            <h1 className="font-meetings-heading mb-4 text-2xl text-meetings-ink">Save to Obsidian</h1>
-            <div className="border border-meetings-border p-6">
-                <div className="mb-4 font-bold text-meetings-ink">{meetingTitle}</div>
+        <div className="meetings-redesign meetings-page-body min-h-screen">
+            <div className="mx-auto max-w-xl px-6 py-16">
+                <h1 className="font-meetings-heading mb-4 text-2xl text-meetings-ink">Save to Obsidian</h1>
+                <div className="rounded-2xl bg-meetings-card p-6 ring-1 ring-foreground/10">
+                    <div className="mb-4 font-bold text-meetings-ink">{meetingTitle}</div>
 
-                <ol className="mb-4 flex flex-col gap-2">
-                    {steps.map((step) => (
-                        <li key={step.id} className="flex items-center justify-between gap-4 text-sm">
-                            <span className="text-meetings-ink">{step.label}</span>
-                            <span className="flex items-center gap-2">
-                                {step.detail ? <span className="text-xs text-meetings-ink-muted">{step.detail}</span> : null}
-                                <span
-                                    className={`font-meetings-mono text-[10px] font-medium tracking-wide uppercase ${statusStyles[step.status]}`}
-                                >
-                                    {statusLabels[step.status]}
-                                </span>
-                            </span>
-                        </li>
-                    ))}
-                </ol>
+                    <ol className="mb-4 flex flex-col gap-2">
+                        {steps.map((step) => {
+                            const Icon = statusIcons[step.status]
+                            return (
+                                <li key={step.id} className="flex items-center gap-3 text-sm">
+                                    <Icon
+                                        className={cn(
+                                            "size-5 shrink-0",
+                                            statusStyles[step.status],
+                                            step.status === "active" && "animate-spin",
+                                        )}
+                                    />
+                                    <span className="flex-1 text-meetings-ink">{step.label}</span>
+                                    {step.detail ? (
+                                        <span className="max-w-[40%] truncate text-xs text-meetings-ink-muted">
+                                            {step.detail}
+                                        </span>
+                                    ) : null}
+                                    <span
+                                        className={`font-meetings-mono rounded-full bg-meetings-chip px-2 py-0.5 text-[10px] font-medium tracking-wide uppercase ${statusStyles[step.status]}`}
+                                    >
+                                        {statusLabels[step.status]}
+                                    </span>
+                                </li>
+                            )
+                        })}
+                    </ol>
 
-                <p className="mb-4 leading-relaxed text-meetings-ink">{finalMessage}</p>
+                    <p className={cn("mb-4 leading-relaxed", retryable ? "text-destructive" : "text-meetings-ink")}>
+                        {finalMessage}
+                    </p>
 
-                <div className="flex items-center gap-2">
-                    {retryable ? (
-                        <Button type="button" className="rounded-none" onClick={handleRetry}>
-                            Retry
+                    <div className="flex items-center gap-2">
+                        {retryable ? (
+                            <Button type="button" onClick={handleRetry}>
+                                Retry
+                            </Button>
+                        ) : null}
+                        <Button type="button" variant={retryable ? "outline" : "default"} onClick={() => window.close()}>
+                            Close this tab
                         </Button>
-                    ) : null}
-                    <Button
-                        type="button"
-                        variant={retryable ? "outline" : "default"}
-                        className="rounded-none"
-                        onClick={() => window.close()}
-                    >
-                        Close this tab
-                    </Button>
-                </div>
+                    </div>
 
-                <p className="mt-6 text-xs text-meetings-ink-muted">
-                    If Chrome asks "Open Obsidian?", click Allow (and "Always allow" to skip this prompt for future
-                    meetings). This prompt is tab-modal — closing this tab before answering it will dismiss the
-                    prompt without opening Obsidian.
-                </p>
+                    <p className="mt-6 text-xs text-meetings-ink-muted">
+                        If Chrome asks "Open Obsidian?", click Allow (and "Always allow" to skip this prompt for future
+                        meetings). This prompt is tab-modal — closing this tab before answering it will dismiss the
+                        prompt without opening Obsidian.
+                    </p>
+                </div>
             </div>
         </div>
     )

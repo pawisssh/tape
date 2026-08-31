@@ -43,6 +43,7 @@ import {
     TEMPLATE_PROPERTY_TYPES,
     templateToWebClipperJson,
     templateFromWebClipperJson,
+    looksLikeTemplateJson,
 } from "../../../extension/obsidian/templates.js"
 import MasterDetailLayout from "../components/MasterDetailLayout"
 import MobileBackButton from "../components/MobileBackButton"
@@ -290,6 +291,14 @@ export default function TemplatesView() {
             toast.add({ title: "Invalid JSON", description: "Couldn't parse that as JSON.", type: "error" })
             return
         }
+        if (!looksLikeTemplateJson(parsed)) {
+            toast.add({
+                title: "Doesn't look like a template",
+                description: "That JSON has no name, note content, or properties.",
+                type: "error",
+            })
+            return
+        }
         const draft = templateFromWebClipperJson(parsed)
         saveTemplate(draft).then((saved) => {
             setTemplates((prev) => [...prev, saved])
@@ -357,7 +366,28 @@ export default function TemplatesView() {
                 selectedId ? (
                     <>
                         <MobileBackButton onClick={() => setMobileDetailOpen(false)} />
-                        <h2 className="font-meetings-heading truncate text-xl text-meetings-ink">{name || "Untitled template"}</h2>
+                        <h2 className="font-meetings-heading flex-1 truncate text-xl text-meetings-ink">
+                            {name || "Untitled template"}
+                        </h2>
+                        <div className="flex items-center gap-2">
+                            <CircleIconButton label="Export" icon={<DownloadIcon />} onClick={handleExport} />
+                            <DropdownMenu>
+                                <DropdownMenuTrigger render={<CircleIconButton label="More actions" icon={<MoreHorizIcon />} />} />
+                                <DropdownMenuContent align="start">
+                                    <DropdownMenuItem onClick={handleDuplicate}>
+                                        <ContentCopyIcon className="size-4" /> Duplicate
+                                    </DropdownMenuItem>
+                                    <DropdownMenuItem onClick={handleCopyAsJson}>
+                                        <ContentPasteIcon className="size-4" /> Copy as JSON
+                                    </DropdownMenuItem>
+                                    {selectedId !== "default" ? (
+                                        <DropdownMenuItem variant="destructive" onClick={handleDelete}>
+                                            <DeleteIcon className="size-4" /> Delete
+                                        </DropdownMenuItem>
+                                    ) : null}
+                                </DropdownMenuContent>
+                            </DropdownMenu>
+                        </div>
                     </>
                 ) : null
             }
@@ -536,26 +566,6 @@ export default function TemplatesView() {
                                     value on commas into separate frontmatter list items.
                                 </p>
                             </div>
-                        </div>
-
-                        <div className="flex items-center gap-2">
-                            <CircleIconButton label="Export" icon={<DownloadIcon />} onClick={handleExport} />
-                            <DropdownMenu>
-                                <DropdownMenuTrigger render={<CircleIconButton label="More actions" icon={<MoreHorizIcon />} />} />
-                                <DropdownMenuContent align="start">
-                                    <DropdownMenuItem onClick={handleDuplicate}>
-                                        <ContentCopyIcon className="size-4" /> Duplicate
-                                    </DropdownMenuItem>
-                                    <DropdownMenuItem onClick={handleCopyAsJson}>
-                                        <ContentPasteIcon className="size-4" /> Copy as JSON
-                                    </DropdownMenuItem>
-                                    {selectedId !== "default" ? (
-                                        <DropdownMenuItem variant="destructive" onClick={handleDelete}>
-                                            <DeleteIcon className="size-4" /> Delete
-                                        </DropdownMenuItem>
-                                    ) : null}
-                                </DropdownMenuContent>
-                            </DropdownMenu>
                         </div>
                     </div>
                 ) : (

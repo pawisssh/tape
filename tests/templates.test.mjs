@@ -47,6 +47,7 @@ const {
     DEFAULT_TEMPLATE,
     templateToWebClipperJson,
     templateFromWebClipperJson,
+    looksLikeTemplateJson,
 } = await import("../extension/obsidian/templates.js")
 
 beforeEach(() => {
@@ -363,5 +364,37 @@ describe("templateFromWebClipperJson", () => {
             path: "should not leak anywhere",
         })
         assert.deepEqual(Object.keys(template).sort(), ["keywords", "name", "noteContent", "properties"])
+    })
+})
+
+describe("looksLikeTemplateJson", () => {
+    test("a real template export (this app's own shape) passes", () => {
+        assert.equal(looksLikeTemplateJson({ name: "Standup", properties: [], noteContent: "# {{title}}" }), true)
+    })
+
+    test("a real Obsidian Web Clipper export passes", () => {
+        assert.equal(
+            looksLikeTemplateJson({ schemaVersion: "0.1.0", name: "Facebook", noteContentFormat: "# {{title}}" }),
+            true,
+        )
+    })
+
+    test("passes on properties alone, even with no name/content", () => {
+        assert.equal(looksLikeTemplateJson({ properties: [{ name: "x", value: "y", type: "text" }] }), true)
+    })
+
+    test("an unrelated JSON object fails", () => {
+        assert.equal(looksLikeTemplateJson({}), false)
+        assert.equal(looksLikeTemplateJson({ foo: "bar", count: 3 }), false)
+        assert.equal(looksLikeTemplateJson({ name: "", properties: [], noteContent: "" }), false)
+        assert.equal(looksLikeTemplateJson({ properties: [] }), false)
+    })
+
+    test("never throws on non-object input", () => {
+        assert.equal(looksLikeTemplateJson(null), false)
+        assert.equal(looksLikeTemplateJson(undefined), false)
+        assert.equal(looksLikeTemplateJson("not an object"), false)
+        assert.equal(looksLikeTemplateJson(42), false)
+        assert.equal(looksLikeTemplateJson([1, 2, 3]), false)
     })
 })

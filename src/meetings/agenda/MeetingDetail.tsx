@@ -1,8 +1,9 @@
-import { useEffect, useRef } from "react"
+import { useEffect, useRef, useState } from "react"
 import { toast } from "@/components/ui/toast"
 import { writeTextWithFallback } from "@/lib/clipboard"
 import MeetingHeaderStats from "./MeetingHeaderStats"
 import DetailTabs from "./DetailTabs"
+import ContextExceededDialog from "./ContextExceededDialog"
 // Framework-free logic module, imported directly — never duplicated into src/. See
 // PLAN.md §6 Phase 5 "Structural rule to preserve". Run now does the whole Save-to-
 // Obsidian flow in place (no more opening a separate handoff tab for a manual save) —
@@ -21,6 +22,13 @@ interface MeetingDetailProps {
     // user has since navigated away from can't clobber the currently-shown status bar.
     operation: MeetingOperation | null
     onOperationChange: (operation: MeetingOperation | null) => void
+    // How the sticky status bar's Stop button actually cancels the in-flight LLM request —
+    // see MeetingsView.tsx's own comment on its cancelHandlersRef for why this can't just
+    // live on `operation` itself. onRegisterCancel is also passed to MeetingDetailToolbar.tsx
+    // (its "Summarize now" can be the thing that's actually running); onCancelOperation is
+    // only needed here, since the Stop button's UI lives in this component's own DetailTabs.
+    onRegisterCancel: (meetingId: string, fn: (() => void) | null) => void
+    onCancelOperation: (meetingId: string) => void
 }
 
 // save-flow.js only reports stable step ids/statuses (see its own "callers own their own
@@ -40,17 +48,28 @@ const RUN_STEP_LABELS: Record<SaveFlowStepId, string> = {
 // sticky h-16 header) — per Figma those sit ABOVE the title/stats seen here, and
 // MasterDetailLayout has no way to interleave content between its two slots, so the two
 // pieces must be split like this rather than living in one component.
-export default function MeetingDetail({ meeting, onRenamed, onNotesSave, onToggleActionItem, operation, onOperationChange }: MeetingDetailProps) {
+export default function MeetingDetail({
+    meeting,
+    onRenamed,
+    onNotesSave,
+    onToggleActionItem,
+    operation,
+    onOperationChange,
+    onRegisterCancel,
+    onCancelOperation,
+}: MeetingDetailProps) {
     // Stable id — must match extension/obsidian/store.js's getMeetingId().
     const meetingId = meeting.meetingStartTimestamp
     const statusLabel = operation?.meetingId === meetingId ? operation.label : null
 
-    // This component remounts per-meeting (see MeetingsView.tsx's `key={...meetingId}`),
-    // but `runSaveToObsidianFlow` isn't cancelled on unmount (no abort primitive exists —
-    // see OperationStatusBar.tsx's own header comment) and keeps running detached. Guards
-    // every onOperationChange call below so a late resolution from a meeting the user has
-    // since navigated away from can never clobber whatever operation (possibly for a
-    // different meeting entirely) is currently tracked in storage.
+    // This component remounts per-meeting (see MeetingsView.tsx's `key={...meetingId}`).
+    // runSaveToObsidianFlow() is now cancelable (via the AbortController created in
+    // handleSaveToObsidian below, registered with MeetingsView.tsx's cancel registry so the
+    // sticky bar's Stop button can reach it) — but only the Stop button triggers that;
+    // simply navigating away from this meeting mid-flow still leaves it running detached,
+    // same as before. Guards every onOperationChange call below so a late resolution from a
+    // meeting the user has since navigated away from can never clobber whatever operation
+    // (possibly for a different meeting entirely) is currently tracked in storage.
     const isMountedRef = useRef(true)
     useEffect(() => {
         isMountedRef.current = true
@@ -59,7 +78,13 @@ export default function MeetingDetail({ meeting, onRenamed, onNotesSave, onToggl
         }
     }, [])
 
+    const [contextDialog, setContextDialog] = useState<{ requiredTokens: number; loadedContextLength?: number } | null>(
+        null,
+    )
+
     async function handleSaveToObsidian() {
+        const controller = new AbortController()
+        onRegisterCancel(meetingId, () => controller.abort())
         try {
             const result = await runSaveToObsidianFlow(meetingId, {
                 onStep: (stepId, stepStatus) => {
@@ -68,6 +93,7 @@ export default function MeetingDetail({ meeting, onRenamed, onNotesSave, onToggl
                     }
                 },
                 writeToClipboard: writeTextWithFallback,
+                signal: controller.signal,
             })
             if (isMountedRef.current) onOperationChange(null)
 
@@ -81,6 +107,10 @@ export default function MeetingDetail({ meeting, onRenamed, onNotesSave, onToggl
                     description: "Configure and save an Obsidian vault name first.",
                     type: "warning",
                 })
+            } else if (result.contextExceeded) {
+                if (isMountedRef.current) setContextDialog(result.contextExceeded)
+            } else if (result.stopped) {
+                toast.add({ title: "Stopped", type: "warning" })
             } else {
                 toast.add({ title: "Could not save to Obsidian", description: result.message.errorMessage, type: "error" })
             }
@@ -91,6 +121,8 @@ export default function MeetingDetail({ meeting, onRenamed, onNotesSave, onToggl
             if (isMountedRef.current) onOperationChange(null)
             console.error("[MeetingDetail] save-to-Obsidian flow threw unexpectedly", err)
             toast.add({ title: "Could not save to Obsidian", type: "error" })
+        } finally {
+            onRegisterCancel(meetingId, null)
         }
     }
 
@@ -114,10 +146,26 @@ export default function MeetingDetail({ meeting, onRenamed, onNotesSave, onToggl
                 meeting={meeting}
                 statusLabel={statusLabel}
                 onRun={handleSaveToObsidian}
-                onDismissStatus={() => onOperationChange(null)}
+                onDismissStatus={() => {
+                    onCancelOperation(meetingId)
+                    onOperationChange(null)
+                }}
                 onToggleActionItem={onToggleActionItem}
                 onNotesSave={onNotesSave}
             />
+
+            {contextDialog && (
+                <ContextExceededDialog
+                    open
+                    requiredTokens={contextDialog.requiredTokens}
+                    loadedContextLength={contextDialog.loadedContextLength}
+                    onOpenChange={(open) => !open && setContextDialog(null)}
+                    onRetry={() => {
+                        setContextDialog(null)
+                        handleSaveToObsidian()
+                    }}
+                />
+            )}
         </div>
     )
 }

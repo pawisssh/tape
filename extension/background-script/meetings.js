@@ -1,6 +1,53 @@
 import { downloadTranscript, postTranscriptToWebhook } from './exporters.js'
-import { getObsidianSettings, updateMeetingById, getMeetingId, getMeetingById } from '../obsidian/store.js'
-import { enrichWithLlm } from '../obsidian/llm.js'
+import { getObsidianSettings, updateMeetingById, getMeetingId } from '../obsidian/store.js'
+
+// Two independent listeners in index.js can both observe the same meeting ending — the
+// "meeting_ended" message (sent when the user clicks the platform's own end-call button)
+// and chrome.tabs.onRemoved (fired when the meeting tab actually closes, a very plausible
+// near-immediate follow-on to that click). Both used to do their own check-then-act on the
+// meetingTabId storage key before calling processLastMeeting() — separate async
+// chrome.storage round-trips with no atomicity, so both could read the pre-"processing"
+// value and both call processLastMeeting() concurrently, double-pushing the same meeting
+// into the meetings array (pickupLastMeetingFromStorage() below reads the same live
+// transcript/chatMessages keys either caller could still see) and double-triggering
+// downloads/webhook posts/the Obsidian handoff. See PLAN.md §7.1.
+//
+// The fix is a synchronous in-memory guard, not a storage-based lock: Chrome delivers
+// extension events one at a time to a single JS execution context per service-worker
+// instance — there's no true parallelism, only interleaved async callbacks — so a
+// module-level flag, set as the very first synchronous action before either listener
+// touches chrome.storage, is sufficient to fully close this race. No timeout/TTL needed,
+// unlike extension/obsidian/store.js's clipboard lock (which guards overlapping *user
+// actions* across separate page loads, a genuinely different problem).
+let finalizationInFlight = false
+
+/**
+ * Runs `runProcessLastMeeting` (production callers pass processLastMeeting itself) at most
+ * once per meeting-end event, even though two independent listeners can both try. Takes
+ * the function to run as a parameter, rather than importing processLastMeeting directly,
+ * so this guard stays unit-testable without needing to import all of index.js (which
+ * registers chrome.runtime.onMessage/chrome.tabs.onRemoved/chrome.alarms/chrome.permissions
+ * listeners at module load time). Never rejects — callers branch on the returned shape
+ * instead of try/catch, matching this codebase's "resolve to a distinct shape rather than
+ * throw" style (see extension/obsidian/llm.js).
+ * @param {() => Promise<any>} runProcessLastMeeting
+ * @returns {Promise<{ranMeetingFinalization: false} | {ranMeetingFinalization: true, result: any} | {ranMeetingFinalization: true, error: any}>}
+ */
+export function finalizeMeetingOnce(runProcessLastMeeting) {
+    if (finalizationInFlight) {
+        // Another listener already claimed this meeting-end event — a safe no-op, not an
+        // error, so the loser can still respond to its own caller (e.g. sendResponse for
+        // the "meeting_ended" message) without duplicating the actual finalization work.
+        return Promise.resolve(/** @type {{ranMeetingFinalization: false}} */ ({ ranMeetingFinalization: false }))
+    }
+    finalizationInFlight = true
+    return runProcessLastMeeting()
+        .then((result) => /** @type {{ranMeetingFinalization: true, result: any}} */ ({ ranMeetingFinalization: true, result }))
+        .catch((error) => /** @type {{ranMeetingFinalization: true, error: any}} */ ({ ranMeetingFinalization: true, error }))
+        .finally(() => {
+            finalizationInFlight = false
+        })
+}
 
 // Download transcripts, post webhook if URL is enabled and available
 // Fails if transcript is empty or webhook request fails or if no meetings in storage
@@ -125,32 +172,64 @@ export function pickupLastMeetingFromStorage() {
 /** @throws error codes: 009, 010, 011, 012, 013, 014 */
 export function recoverLastMeeting() {
     return new Promise((resolve, reject) => {
-        chrome.storage.local.get(["meetings", "meetingStartTimestamp"], function (resultLocalUntyped) {
+        chrome.storage.local.get(["meetings", "meetingStartTimestamp", "meetingTabId"], function (resultLocalUntyped) {
             const resultLocal = /** @type {ResultLocal} */ (resultLocalUntyped)
-            // Check if user ever attended a meeting
-            if (resultLocal.meetingStartTimestamp) {
-                /** @type {Meeting | undefined} */
-                let lastSavedMeeting
-                if ((resultLocal.meetings) && (resultLocal.meetings.length > 0)) {
-                    lastSavedMeeting = resultLocal.meetings[resultLocal.meetings.length - 1]
-                }
 
-                // Last meeting was not processed for some reason. Need to recover that data, process and download it.
-                if ((!lastSavedMeeting) || (resultLocal.meetingStartTimestamp !== lastSavedMeeting.meetingStartTimestamp)) {
-                    processLastMeeting().then(() => {
-                        resolve("Recovered last meeting to the best possible extent")
-                    }).catch((error) => {
-                        // Fails with error codes: 009, 010, 011, 013, 014
-                        const parsedError = /** @type {ErrorObject} */ (error)
-                        reject({ errorCode: parsedError.errorCode, errorMessage: parsedError.errorMessage })
-                    })
+            function checkIfRecoveryNeeded() {
+                // Check if user ever attended a meeting
+                if (resultLocal.meetingStartTimestamp) {
+                    /** @type {Meeting | undefined} */
+                    let lastSavedMeeting
+                    if ((resultLocal.meetings) && (resultLocal.meetings.length > 0)) {
+                        lastSavedMeeting = resultLocal.meetings[resultLocal.meetings.length - 1]
+                    }
+
+                    // Last meeting was not processed for some reason. Need to recover that data, process and download it.
+                    if ((!lastSavedMeeting) || (resultLocal.meetingStartTimestamp !== lastSavedMeeting.meetingStartTimestamp)) {
+                        processLastMeeting().then(() => {
+                            resolve("Recovered last meeting to the best possible extent")
+                        }).catch((error) => {
+                            // Fails with error codes: 009, 010, 011, 013, 014
+                            const parsedError = /** @type {ErrorObject} */ (error)
+                            reject({ errorCode: parsedError.errorCode, errorMessage: parsedError.errorMessage })
+                        })
+                    }
+                    else {
+                        resolve("No recovery needed")
+                    }
                 }
                 else {
-                    resolve("No recovery needed")
+                    reject({ errorCode: "013", errorMessage: "No meetings found. May be attend one?" })
                 }
             }
+
+            // Guard against force-ending a meeting that's still genuinely being captured.
+            // This function is called both on browser startup (crash recovery — any stored
+            // meetingTabId is guaranteed stale there, since tabs get new ids after a full
+            // restart) and every time the Meetings page mounts (MeetingsView.tsx) — the
+            // latter previously had no way to tell "capture is still live" from "capture
+            // wasn't properly finalized", and would force-finalize (i.e. end) an actively
+            // recording meeting just from being opened. meetingTabId is the extension's
+            // single source of truth for "is a meeting being captured right now" (see
+            // src/meetings/use-live-capture-state.ts) — checking it here, including
+            // verifying the tab is actually still open, fixes that without touching the
+            // crash-recovery path (a stale id there always fails the tabs.get check below).
+            if (resultLocal.meetingTabId === "processing") {
+                resolve("No recovery needed — a meeting is already being processed")
+            }
+            else if (typeof resultLocal.meetingTabId === "number") {
+                chrome.tabs.get(resultLocal.meetingTabId, () => {
+                    if (chrome.runtime.lastError) {
+                        // Tab no longer exists — stale id, safe to run the normal recovery check.
+                        checkIfRecoveryNeeded()
+                    }
+                    else {
+                        resolve("No recovery needed — a meeting is actively being captured")
+                    }
+                })
+            }
             else {
-                reject({ errorCode: "013", errorMessage: "No meetings found. May be attend one?" })
+                checkIfRecoveryNeeded()
             }
         })
     })
@@ -190,50 +269,6 @@ export function triggerObsidianHandoffIfConfigured(meeting) {
                 })
                 return { opened: true }
             })
-    })
-}
-
-/**
- * On-demand LLM summarization for one meeting, independent of the Obsidian handoff —
- * this is what the "Summarize" row action calls, primarily useful when
- * `obsidianLlmAutoRun` is off (so the handoff page skips summarizing automatically) but
- * also works any time a meeting doesn't have a cached summary yet. Caches the result the
- * same way markSummaryCache() does in src/obsidian-handoff/App.tsx. Never throws —
- * enrichWithLlm() is documented to never throw, and every other failure mode here
- * (missing meeting, LLM disabled) resolves to `{success: false, message}` instead.
- * @param {string} meetingId
- * @returns {Promise<{success: boolean, message?: string}>}
- */
-export function summarizeMeetingNow(meetingId) {
-    return Promise.all([getMeetingById(meetingId), getObsidianSettings()]).then(([meeting, settings]) => {
-        if (!meeting) {
-            return { success: false, message: "Meeting not found." }
-        }
-        if (!settings.obsidianUseLlm) {
-            return { success: false, message: "Local LLM summary enrichment is off — enable it on the Integrations page first." }
-        }
-
-        return enrichWithLlm(meeting, settings).then((result) => {
-            if (!result) {
-                return { success: false, message: "Local LLM unavailable or returned nothing usable." }
-            }
-            if ("contextExceeded" in result) {
-                return {
-                    success: false,
-                    message:
-                        `This meeting needs about ${result.requiredTokens.toLocaleString()} tokens of context, ` +
-                        `but the model is loaded with only ${result.loadedContextLength.toLocaleString()}. ` +
-                        `Load it with more context in LM Studio and try again.`,
-                }
-            }
-
-            return updateMeetingById(meetingId, () => ({
-                llmSummaryMarkdown: result.summaryMarkdown,
-                llmSummaryIncludesTranscript: result.includesTranscript,
-                llmSummaryIncludesChatMessages: result.includesChatMessages,
-                ...(result.title ? { llmSummaryTitle: result.title } : {}),
-            })).then(() => ({ success: true }))
-        })
     })
 }
 

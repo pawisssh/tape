@@ -42,3 +42,39 @@ export function hasPermissions(
 ): Promise<boolean> {
     return chrome.permissions.contains({ origins, permissions })
 }
+
+/**
+ * True when `url` would send data unencrypted to somewhere other than the machine running
+ * the browser — plain `http://` to a public/remote host. Always false for `https://` (safe
+ * regardless of host), and false for `http://` to localhost or a private-network address
+ * (legitimate — LM Studio/Ollama default to plain http on localhost, and a self-hosted
+ * webhook receiver on a home LAN is exactly as legitimate; warning on those would be noise,
+ * not signal). Used by WebhookSection.tsx/ProviderPanel.tsx to gate an inline "this isn't
+ * encrypted" warning before Connect proceeds — see PLAN.md §7.2. Never throws; an
+ * unparseable URL resolves to `false` (nothing to flag yet — the existing origin-pattern
+ * helpers above already treat that case as "can't request a permission for this," which
+ * surfaces its own feedback separately).
+ */
+export function isInsecureUrl(url: string): boolean {
+    let parsed: URL
+    try {
+        parsed = new URL(url)
+    } catch {
+        return false
+    }
+    if (parsed.protocol !== "http:") {
+        return false
+    }
+    // URL.hostname keeps the brackets for an IPv6 literal (e.g. "[::1]", not "::1").
+    const host = parsed.hostname
+    if (host === "localhost" || host === "127.0.0.1" || host === "::1" || host === "[::1]") {
+        return false
+    }
+    // RFC 1918 private ranges + link-local (RFC 3927) — self-hosted servers on a home/office
+    // LAN, not exposed to the wider internet.
+    if (/^10\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(host)) return false
+    if (/^192\.168\.\d{1,3}\.\d{1,3}$/.test(host)) return false
+    if (/^172\.(1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}$/.test(host)) return false
+    if (/^169\.254\.\d{1,3}\.\d{1,3}$/.test(host)) return false
+    return true
+}

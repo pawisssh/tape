@@ -21,13 +21,20 @@ interface OperationStatusBarProps {
 // globals.css), same as any other spinner — it communicates "still working", not "N%
 // done".
 //
-// `onDismiss` is best-effort only — it just hides the bar (clears `operation`). There is
-// no cancellation primitive anywhere in this codebase's messaging/LLM layers to actually
-// abort the in-flight sendMessage/runSaveToObsidianFlow call, so the underlying work keeps
-// running silently. Two things keep that safe: `operation` being keyed by meeting id (see
-// MeetingsView.tsx) means a stale resolution for a meeting the user has since navigated
-// away from can't clobber a different meeting's bar; and MeetingDetail.tsx /
-// MeetingDetailToolbar.tsx both guard their `onOperationChange` calls behind an
+// `onDismiss` both hides the bar (clears `operation`) AND actually cancels the in-flight
+// LLM request — MeetingDetail.tsx's `onDismissStatus` calls MeetingsView.tsx's
+// `cancelOperation(meetingId)` first, which aborts whichever AbortController
+// MeetingDetail.tsx/MeetingDetailToolbar.tsx registered for this meeting (see
+// MeetingsView.tsx's cancelHandlersRef), which extension/obsidian/llm.js bridges into the
+// actual `fetch()` — LM Studio detects the dropped connection and stops generating
+// server-side too, not just client-side. This is real cancellation only for the `llm` step
+// specifically; Run's other steps (markdown/deliver/launch) are fast, local operations
+// with nothing to cancel, so clicking Stop during one of those is still just a bar-dismiss.
+// Two things keep the underlying-work-keeps-running case (a stale/already-unregistered
+// cancel handler, or a click during a non-cancelable step) safe: `operation` being keyed
+// by meeting id (see MeetingsView.tsx) means a stale resolution for a meeting the user has
+// since navigated away from can't clobber a different meeting's bar; and MeetingDetail.tsx
+// / MeetingDetailToolbar.tsx both guard their `onOperationChange` calls behind an
 // isMountedRef so a resolution landing after the *specific meeting instance* that started
 // it has unmounted (e.g. the user picked a different meeting mid-flight) is dropped
 // instead of racing a newer operation. `operation` itself is chrome.storage.local-backed
@@ -36,16 +43,16 @@ interface OperationStatusBarProps {
 // the UI silently forgetting about it.
 export default function OperationStatusBar({ label, onDismiss }: OperationStatusBarProps) {
     return (
-        <div className="sticky bottom-0 flex h-9 w-full shrink-0 items-center justify-between overflow-hidden border-t border-meetings-border bg-meetings-card pr-2 pl-4">
+        // Figma node 2005:667 ("Toolbar", the parent frame of the 2005:719 gradient cited
+        // above): the bar's own background is a flat black-at-12%-opacity overlay
+        // (`rgba(0,0,0,0.12)`), not this design's usual solid `meetings-card` — a
+        // deliberate one-off, not a token gap.
+        <div className="sticky bottom-0 flex h-9 w-full shrink-0 items-center justify-between overflow-hidden border-t border-meetings-border bg-black/12 pr-2 pl-4">
             <div
                 className="pointer-events-none absolute inset-y-0 left-0 w-1/2"
                 style={{
-                    // Figma's own gradient-fill inspector for this node: 0% white (opaque —
-                    // over this bar's white background that's indistinguishable from
-                    // transparent, so `transparent` reproduces it exactly), 50% solid
-                    // #f34f16 (the peak, no plateau), 100% transparent — a single
-                    // continuous triangular ramp, not a fade-in-then-hold-then-fade-out.
-                    background: "linear-gradient(90deg, transparent 0%, var(--color-meetings-accent) 50%, transparent 100%)",
+                    // Figma node 2005:719 gradient specification:
+                    background: "linear-gradient(90deg, rgba(255, 255, 255, 0.00) 0%, #F34F16 50%, rgba(255, 255, 255, 0.00) 100%)",
                     animation: "meetings-operation-sweep 1.4s ease-in-out infinite",
                 }}
                 aria-hidden
@@ -55,9 +62,9 @@ export default function OperationStatusBar({ label, onDismiss }: OperationStatus
             </span>
             <button
                 type="button"
-                aria-label="Dismiss"
+                aria-label="Stop"
                 onClick={onDismiss}
-                className="relative flex size-9 shrink-0 items-center justify-center rounded-full bg-meetings-card text-meetings-ink shadow-[0px_16px_16px_rgba(12,12,13,0.1),0px_4px_2px_rgba(12,12,13,0.05)] transition-opacity hover:opacity-70"
+                className="relative flex size-9 shrink-0 items-center justify-center text-meetings-ink transition-opacity hover:opacity-70"
             >
                 <StopFillIcon className="size-4" />
             </button>

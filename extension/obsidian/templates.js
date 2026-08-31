@@ -239,6 +239,31 @@ export function templateToWebClipperJson(template, options) {
 }
 
 /**
+ * Best-effort check for whether `json` actually looks like it was meant to be a template
+ * export (this app's own, or an Obsidian Web Clipper one) rather than an arbitrary,
+ * unrelated JSON file. templateFromWebClipperJson() below is deliberately permissive —
+ * every field defaults rather than throws, so a genuinely partial template still imports
+ * — which means it can't tell "a real but mostly-empty template" from "the wrong file
+ * entirely" on its own; callers (TemplatesView's import flow) should check this first and
+ * surface an error instead of silently producing an empty "Imported template". Requires
+ * at least one of name/noteContentFormat/noteContent/properties to be present and roughly
+ * the right type — see PLAN.md §7.6.
+ * @param {unknown} json
+ * @returns {boolean}
+ */
+export function looksLikeTemplateJson(json) {
+    if (!json || typeof json !== "object" || Array.isArray(json)) {
+        return false
+    }
+    const obj = /** @type {Record<string, unknown>} */ (json)
+    if (typeof obj.name === "string" && obj.name.trim() !== "") return true
+    if (typeof obj.noteContentFormat === "string" && obj.noteContentFormat.trim() !== "") return true
+    if (typeof obj.noteContent === "string" && obj.noteContent.trim() !== "") return true
+    if (Array.isArray(obj.properties) && obj.properties.length > 0) return true
+    return false
+}
+
+/**
  * The read-side counterpart of templateToWebClipperJson() — also accepts a template
  * previously exported by THIS app (a strict subset of the same shape), so export/import
  * round-trips exactly. Never throws; every field is permissively defaulted so a

@@ -1,5 +1,5 @@
 import { ALARM_NAME } from "./config.js"
-import { processLastMeeting, recoverLastMeeting, summarizeMeetingNow } from "./meetings.js"
+import { processLastMeeting, recoverLastMeeting, finalizeMeetingOnce } from "./meetings.js"
 import { downloadTranscript, postTranscriptToWebhook } from "./exporters.js"
 import {
     getPermissionStatus,
@@ -33,30 +33,43 @@ chrome.runtime.onMessage.addListener(function (messageUnTyped, sender, sendRespo
     }
 
     if (message.type === "meeting_ended") {
-        // Prevents double downloading of transcript from tab closed event listener. Also prevents available update from being applied, during meeting post processing.
+        // Still set eagerly — a visible/inspectable "processing" state — but this is no
+        // longer what prevents chrome.tabs.onRemoved from double-processing the same
+        // meeting; finalizeMeetingOnce() below (see its own doc comment, meetings.js) is
+        // the actual guard, since this storage round-trip and onRemoved's own can race.
         chrome.storage.local.set({ meetingTabId: "processing" }, function () {
             console.log("Meeting tab id set to processing meeting")
 
-            processLastMeeting()
-                .then(() => {
+            finalizeMeetingOnce(processLastMeeting).then((outcome) => {
+                if (!outcome.ranMeetingFinalization) {
+                    // chrome.tabs.onRemoved already claimed this meeting-end event (the
+                    // tab closed moments after this message was sent) and owns calling
+                    // clearTabIdAndApplyUpdate() itself — still respond so this message's
+                    // sendResponse doesn't hang the content script's sendMessage promise.
                     /** @type {ExtensionResponse} */
                     const response = { success: true }
                     sendResponse(response)
-                })
-                .catch((error) => {
+                    return
+                }
+
+                if ("error" in outcome) {
                     // Fails with error codes: 009, 010, 011, 012, 013, 014
-                    const parsedError = /** @type {ErrorObject} */ (error)
+                    const parsedError = /** @type {ErrorObject} */ (outcome.error)
 
                     /** @type {ExtensionResponse} */
                     const response = { success: false, message: parsedError }
                     sendResponse(response)
-                })
-                .finally(() => {
-                    // setTimeout(() => {
-                    //     checkPermissionsAndOpenMeetingsPage()
-                    // }, 10000)
-                    clearTabIdAndApplyUpdate()
-                })
+                } else {
+                    /** @type {ExtensionResponse} */
+                    const response = { success: true }
+                    sendResponse(response)
+                }
+
+                // setTimeout(() => {
+                //     checkPermissionsAndOpenMeetingsPage()
+                // }, 10000)
+                clearTabIdAndApplyUpdate()
+            })
         })
     }
 
@@ -250,21 +263,6 @@ chrome.runtime.onMessage.addListener(function (messageUnTyped, sender, sendRespo
         })
     }
 
-    if (message.type === "summarize_meeting_now") {
-        if (typeof message.meetingId === "string" && message.meetingId) {
-            summarizeMeetingNow(message.meetingId).then((result) => {
-                /** @type {ExtensionResponse} */
-                const response = { success: result.success, message: result.message }
-                sendResponse(response)
-            })
-        }
-        else {
-            /** @type {ExtensionResponse} */
-            const response = { success: false, message: { errorCode: "015", errorMessage: "Invalid meetingId" } }
-            sendResponse(response)
-        }
-    }
-
     if (message.type === "open_side_panel") {
         /** @type {Platform} */
 
@@ -297,7 +295,12 @@ chrome.tabs.onRemoved.addListener(function (tabId) {
             chrome.storage.local.set({ meetingTabId: "processing" }, function () {
                 console.log("Meeting tab id set to processing meeting")
 
-                processLastMeeting().finally(() => {
+                finalizeMeetingOnce(processLastMeeting).then(({ ranMeetingFinalization }) => {
+                    if (!ranMeetingFinalization) {
+                        // The "meeting_ended" message already claimed this meeting-end
+                        // event and owns calling clearTabIdAndApplyUpdate() itself.
+                        return
+                    }
                     // setTimeout(() => {
                     //     checkPermissionsAndOpenMeetingsPage()
                     // }, 10000)
@@ -357,7 +360,7 @@ chrome.runtime.onInstalled.addListener(() => {
         chrome.storage.sync.set({
             autoPostWebhookAfterMeeting: resultSync.autoPostWebhookAfterMeeting === false ? false : true,
             autoDownloadFileAfterMeeting: resultSync.autoDownloadFileAfterMeeting === false ? false : true,
-            operationMode: resultSync.operationMode === "manual" ? "manual" : "auto",
+            operationMode: resultSync.operationMode === "manual" ? "manual" : resultSync.operationMode === "off" ? "off" : "auto",
             hideCaptions: resultSync.hideCaptions === true ? true : false,
             webhookBodyType: resultSync.webhookBodyType === "advanced" ? "advanced" : "simple",
             wantGoogleMeet: resultSync.wantGoogleMeet === false ? false : true,

@@ -45,7 +45,7 @@ import {
 // PROVIDER_PRESETS in providers.js for the actual per-provider defaults now.
 
 /** @type {ObsidianLlmTimeoutMs} */
-export const DEFAULT_LLM_TIMEOUT_MS = 300000
+export const DEFAULT_LLM_TIMEOUT_MS = 600000
 
 // Timeout for the best-effort "what context is this model loaded with?" pre-flight check
 // (see getLoadedContextLength below) — independent of the main DEFAULT_LLM_TIMEOUT_MS
@@ -215,47 +215,115 @@ export function estimateTokenCount(text) {
 }
 
 /**
- * Best-effort read of the context window `model` is CURRENTLY loaded with, via LM
- * Studio's native `GET {origin}/api/v0/models/{model}` endpoint (`loaded_context_length`
- * field — present only while the model is actually loaded; distinct from the model's
- * `max_context_length`, which is just its training-time ceiling and says nothing about
- * how it's currently configured). This is an LM-Studio-specific extension, not part of
- * the OpenAI spec the rest of this file targets — on Ollama or any other server, or if
- * anything about this request goes wrong (unreachable, timeout, non-2xx, unparseable body,
- * or the field simply isn't present), this resolves to `null`, meaning "unknown — the
- * caller should skip the context-size check, not treat this as an error."
+ * `requiredTokens` (the prompt's own estimated size) plus headroom for the model's own
+ * response on top of it, rounded up to the nearest 1024 — a number a user can actually
+ * type into LM Studio's Context Length field. This is both the number `enrichWithLlm`
+ * actually checks the provider's context window against (a bare prompt-only estimate
+ * would leave no room for the model to generate anything, since requests here don't set
+ * `max_tokens`) and the number `ContextExceededDialog.tsx` suggests the user raise their
+ * context length to — the same calculation, not two that could drift apart.
+ * @param {number} requiredTokens
+ * @returns {number}
+ */
+export function suggestedContextWindow(requiredTokens) {
+    return Math.ceil((requiredTokens * 1.15) / 1024) * 1024
+}
+
+/**
+ * Best-effort check for whether a non-2xx completions response is specifically a
+ * context-length/token-limit rejection, as opposed to any other failure (auth, malformed
+ * request, model not found, server error, etc.). This is the fallback safety net for when
+ * the pre-flight getModelContextInfo() check couldn't determine a ceiling in advance (a
+ * non-LM-Studio provider, a model id LM Studio's /api/v0/models doesn't recognize, that
+ * request timing out, etc.) — the transcript may still genuinely not fit, and the server
+ * itself is the one authority that always knows for certain. llama.cpp-based servers (LM
+ * Studio, text-generation-webui, koboldcpp) and OpenAI-compatible APIs generally surface
+ * this as an error message containing wording like "context length"/"context window"/
+ * "maximum context". Never throws — any failure to read the body resolves to `false`,
+ * meaning "not detected as a context error," not "definitely isn't one."
+ * @param {Response} response
+ * @returns {Promise<boolean>}
+ */
+async function isContextLengthError(response) {
+    try {
+        const text = await response.text()
+        return /context.{0,20}(length|window|size)|maximum context|too many tokens|token limit/i.test(text)
+    } catch {
+        return false
+    }
+}
+
+/**
+ * Wire an external, caller-owned AbortSignal into a request-local AbortController, so
+ * aborting the external signal (e.g. a user clicking "Stop") also cancels this specific
+ * fetch — without giving the caller direct access to the internal controller, which also
+ * needs to self-abort on its own timeout independent of anything external. A no-op when
+ * `externalSignal` is omitted (every call site here is used for both user-triggered
+ * requests and internal-only ones, e.g. from a Retry that doesn't have a signal handy).
+ * @param {AbortController} controller
+ * @param {AbortSignal} [externalSignal]
+ */
+function bridgeExternalAbort(controller, externalSignal) {
+    if (!externalSignal) {
+        return
+    }
+    if (externalSignal.aborted) {
+        controller.abort()
+        return
+    }
+    externalSignal.addEventListener("abort", () => controller.abort(), { once: true })
+}
+
+/**
+ * Best-effort read of `model`'s context info via LM Studio's native
+ * `GET {origin}/api/v0/models/{model}` endpoint — two independently-optional signals:
+ * `loadedContextLength` (the `loaded_context_length` field, present only while the model
+ * is actually loaded into memory — the most accurate signal, since it's what the model is
+ * *actually* running with right now) and `maxContextLength` (the `max_context_length`
+ * field, the model's training-time ceiling — present regardless of load state, so it's
+ * available even for a model LM Studio hasn't auto-loaded yet). This is an LM-Studio-
+ * specific extension, not part of the OpenAI spec the rest of this file targets — on
+ * Ollama or any other server, or if anything about this request goes wrong (unreachable,
+ * timeout, non-2xx, unparseable body), both resolve to `null`, meaning "unknown — the
+ * caller should skip whichever check(s) it can't do, not treat this as an error."
  * @param {string} endpoint the configured chat-completions endpoint
  * @param {string} model
  * @param {string} [apiKey]
- * @returns {Promise<number | null>}
+ * @param {AbortSignal} [signal] external signal (e.g. a user-triggered Stop) — see bridgeExternalAbort()
+ * @returns {Promise<{loadedContextLength: number | null, maxContextLength: number | null}>}
  */
-async function getLoadedContextLength(endpoint, model, apiKey) {
+async function getModelContextInfo(endpoint, model, apiKey, signal) {
     /** @type {string} */
     let origin
     try {
         origin = new URL(endpoint).origin
     } catch {
-        return null
+        return { loadedContextLength: null, maxContextLength: null }
     }
 
     const controller = new AbortController()
     const timeoutHandle = setTimeout(() => controller.abort(), MODEL_INFO_TIMEOUT_MS)
+    bridgeExternalAbort(controller, signal)
     try {
         const response = await fetch(`${origin}/api/v0/models/${encodeURIComponent(model)}`, {
             headers: apiKey ? { Authorization: `Bearer ${apiKey}` } : undefined,
             signal: controller.signal,
         })
         if (!response.ok) {
-            return null
+            return { loadedContextLength: null, maxContextLength: null }
         }
         /** @type {any} */
         const body = await response.json()
         const loadedContextLength = body?.loaded_context_length
-        return typeof loadedContextLength === "number" && Number.isFinite(loadedContextLength)
-            ? loadedContextLength
-            : null
+        const maxContextLength = body?.max_context_length
+        return {
+            loadedContextLength:
+                typeof loadedContextLength === "number" && Number.isFinite(loadedContextLength) ? loadedContextLength : null,
+            maxContextLength:
+                typeof maxContextLength === "number" && Number.isFinite(maxContextLength) ? maxContextLength : null,
+        }
     } catch {
-        return null
+        return { loadedContextLength: null, maxContextLength: null }
     } finally {
         clearTimeout(timeoutHandle)
     }
@@ -276,19 +344,34 @@ async function getLoadedContextLength(endpoint, model, apiKey) {
  * fall back to the plain Phase-3 markdown" and never needs a try/catch of its own around
  * this call.
  *
- * The one exception: if LM Studio reports the model is currently loaded with less context
- * than this transcript is estimated to need, this resolves to a distinct
- * `{contextExceeded: true, requiredTokens, loadedContextLength}` shape instead — a
- * deliberately actionable, user-fixable condition (reload the model in LM Studio with more
- * context) that the caller surfaces as a blocking, retryable error rather than silently
- * dropping the summary. This check is itself best-effort: if the loaded context length
- * can't be determined (non-LM-Studio server, model info unavailable, etc.), it's simply
- * skipped and the normal request proceeds.
+ * The one exception: if this transcript is estimated to need more context than the model
+ * can provide, this resolves to a distinct `{contextExceeded: true, requiredTokens,
+ * loadedContextLength?}` shape instead — a deliberately actionable, user-fixable condition
+ * (reload the model in LM Studio with more context) that the caller surfaces as a
+ * blocking, retryable error rather than silently dropping the summary. This is detected two
+ * ways: (1) a pre-flight check, comparing the buffered estimate against whichever of the
+ * model's *currently loaded* context (most accurate) or its *maximum* context (fallback,
+ * used when LM Studio hasn't auto-loaded the model yet — see getModelContextInfo()'s own
+ * doc comment) is available — `loadedContextLength` in the returned shape is that chosen
+ * ceiling when this path is what caught it; or (2) a fallback, when the pre-flight check
+ * found no ceiling to compare against at all (non-LM-Studio provider, unrecognized model
+ * id, that request timing out, etc.) and the real request goes out anyway — if the server
+ * itself then rejects it with wording indicating a context/token-limit problem (see
+ * isContextLengthError()), that's just as authoritative and gets caught here too, with
+ * `loadedContextLength` omitted (no reliable number to report from server prose alone).
+ *
+ * A second, distinct exception: if `signal` is passed and gets aborted (e.g. the user
+ * clicked "Stop") while a network request is in flight, this resolves to `{stopped: true}`
+ * instead of `null` — the caller treats this as a hard stop of the whole operation, not
+ * "LLM unavailable, fall back to the plain transcript" (which is what a bare `null` still
+ * means for every other failure, including this function's own internal timeout aborting
+ * the request — only an externally-aborted `signal` produces `{stopped: true}`).
  * @param {Meeting} meeting
  * @param {ObsidianSettings} settings
- * @returns {Promise<{title?: string, summaryMarkdown: string, properties: ResolvedProperty[], includesTranscript: boolean, includesChatMessages: boolean} | {contextExceeded: true, requiredTokens: number, loadedContextLength: number} | null>}
+ * @param {AbortSignal} [signal] external signal (e.g. a user-triggered Stop) — see bridgeExternalAbort()
+ * @returns {Promise<{title?: string, summaryMarkdown: string, properties: ResolvedProperty[], includesTranscript: boolean, includesChatMessages: boolean} | {contextExceeded: true, requiredTokens: number, loadedContextLength?: number} | {stopped: true} | null>}
  */
-export async function enrichWithLlm(meeting, settings) {
+export async function enrichWithLlm(meeting, settings, signal) {
     try {
         if (!settings || !settings.obsidianUseLlm) {
             return null
@@ -325,11 +408,30 @@ export async function enrichWithLlm(meeting, settings) {
             const fullPromptText = systemPrompt + "\n" + userPrompt
 
             if (model) {
-                const loadedContextLength = await getLoadedContextLength(endpoint, model, settings.obsidianLlmApiKey)
-                if (loadedContextLength !== null) {
+                const { loadedContextLength, maxContextLength } = await getModelContextInfo(
+                    endpoint,
+                    model,
+                    settings.obsidianLlmApiKey,
+                    signal,
+                )
+                if (signal?.aborted) {
+                    return { stopped: true }
+                }
+                // Prefer the model's currently loaded context (most accurate — what it's
+                // actually running with right now); fall back to its max context when LM
+                // Studio hasn't auto-loaded the model yet, so `loaded_context_length` isn't
+                // reported at all — see getModelContextInfo()'s doc comment.
+                const contextCeiling = loadedContextLength ?? maxContextLength
+                if (contextCeiling !== null) {
                     const requiredTokens = estimateTokenCount(fullPromptText)
-                    if (requiredTokens > loadedContextLength) {
-                        return { contextExceeded: true, requiredTokens, loadedContextLength }
+                    // Compare the *buffered* size (transcript/prompt + headroom for the
+                    // model's own response — see suggestedContextWindow()'s doc comment),
+                    // not the bare prompt estimate, so a transcript that just barely fits
+                    // the prompt but leaves no room to actually generate a response still
+                    // gets caught here instead of firing a request that comes back
+                    // truncated or empty.
+                    if (suggestedContextWindow(requiredTokens) > contextCeiling) {
+                        return { contextExceeded: true, requiredTokens, loadedContextLength: contextCeiling }
                     }
                 }
             }
@@ -338,6 +440,7 @@ export async function enrichWithLlm(meeting, settings) {
 
             const controller = new AbortController()
             const timeoutHandle = setTimeout(() => controller.abort(), timeoutMs)
+            bridgeExternalAbort(controller, signal)
 
             /** @type {Response} */
             let response
@@ -360,14 +463,28 @@ export async function enrichWithLlm(meeting, settings) {
                     signal: controller.signal,
                 })
             } catch {
-                // Server unreachable, DNS failure, missing host permission, or the abort
-                // firing (timeout) — all surface as a rejected fetch() here.
-                return null
+                // Server unreachable, DNS failure, missing host permission, this function's
+                // own timeout firing, or the external `signal` being aborted — all surface
+                // as a rejected fetch() here alike. Only the last of those is a user-
+                // triggered Stop, distinguished below by checking the external signal
+                // specifically (an internal timeout never touches it).
+                return signal?.aborted ? { stopped: true } : null
             } finally {
                 clearTimeout(timeoutHandle)
             }
 
             if (!response.ok) {
+                // The pre-flight check above is best-effort and may have found no ceiling
+                // to compare against at all (non-LM-Studio provider, a model id LM Studio's
+                // own /api/v0/models doesn't recognize, that request timing out, etc.) — if
+                // so, this is the fallback: the server itself just told us, authoritatively,
+                // whether this specific rejection was a context/token-limit problem. Unlike
+                // the pre-flight path, there's no reliable numeric ceiling to report here
+                // (we only have the server's prose, not a guaranteed number in it), so
+                // `loadedContextLength` is omitted rather than guessed at.
+                if (await isContextLengthError(response)) {
+                    return { contextExceeded: true, requiredTokens: estimateTokenCount(fullPromptText) }
+                }
                 return null
             }
 

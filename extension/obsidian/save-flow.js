@@ -30,21 +30,30 @@ import { getMeetingById, updateMeetingById, getObsidianSettings, acquireClipboar
  * @property {(stepId: SaveFlowStepId, status: SaveFlowStepStatus, detail?: string) => void} onStep called at every step transition — callers own their own presentation (a full step list vs. a single rotating label), this only reports stable id+status+an optional short detail
  * @property {(text: string) => Promise<boolean>} writeToClipboard
  * @property {(meeting: Meeting) => void} [onMeetingLoaded] called once, right after the meeting is fetched — only the standalone handoff page needs this (to display the meeting's title, since it otherwise never sees the `Meeting` object); the Meetings page already has `meeting` as a prop, so it omits this
+ * @property {AbortSignal} [signal] lets a caller (e.g. a Stop button) cancel the in-flight LLM request — see enrichWithLlm()'s own `signal` param. Only the `llm` step is actually cancelable; every other step is a fast, local operation.
  */
 
 /**
  * @typedef {
  *   | { success: true, mode: "inline" | "clipboard" }
- *   | { success: false, retryable: boolean, message: ErrorObject }
+ *   | { success: false, retryable: boolean, message: ErrorObject, contextExceeded?: { requiredTokens: number, loadedContextLength?: number }, stopped?: boolean }
  * } SaveFlowResult
  */
 
 /**
  * @param {Awaited<ReturnType<typeof enrichWithLlm>>} result
- * @returns {result is { contextExceeded: true, requiredTokens: number, loadedContextLength: number }}
+ * @returns {result is { contextExceeded: true, requiredTokens: number, loadedContextLength?: number }}
  */
 function isContextExceeded(result) {
     return result !== null && typeof result === "object" && "contextExceeded" in result
+}
+
+/**
+ * @param {Awaited<ReturnType<typeof enrichWithLlm>>} result
+ * @returns {result is { stopped: true }}
+ */
+function isStopped(result) {
+    return result !== null && typeof result === "object" && "stopped" in result
 }
 
 /**
@@ -59,7 +68,7 @@ function isContextExceeded(result) {
  * @param {SaveFlowCallbacks} callbacks
  * @returns {Promise<SaveFlowResult>}
  */
-export async function runSaveToObsidianFlow(meetingId, { onStep, writeToClipboard, onMeetingLoaded }) {
+export async function runSaveToObsidianFlow(meetingId, { onStep, writeToClipboard, onMeetingLoaded, signal }) {
     onStep("load", "active")
     const [meeting, settings] = await Promise.all([getMeetingById(meetingId), getObsidianSettings()])
 
@@ -122,10 +131,26 @@ export async function runSaveToObsidianFlow(meetingId, { onStep, writeToClipboar
         /** @type {Awaited<ReturnType<typeof enrichWithLlm>>} */
         let rawLlmResult = null
         try {
-            rawLlmResult = await enrichWithLlm(meeting, settings)
+            rawLlmResult = await enrichWithLlm(meeting, settings, signal)
         } catch (err) {
             console.error("[save-flow] LLM enrichment threw unexpectedly (falling back to plain note)", err)
             rawLlmResult = null
+        }
+
+        if (isStopped(rawLlmResult)) {
+            // Unlike every other failure mode here, a user-triggered Stop must stop the
+            // whole operation, not silently fall back to a plain-transcript export.
+            onStep("llm", "failed", "Stopped.")
+            onStep("markdown", "skipped")
+            onStep("deliver", "skipped")
+            onStep("launch", "skipped")
+            await markStatus(meetingId, "failed")
+            return {
+                success: false,
+                retryable: true,
+                stopped: true,
+                message: { errorCode: "022", errorMessage: "Stopped." },
+            }
         }
 
         if (isContextExceeded(rawLlmResult)) {
@@ -133,7 +158,9 @@ export async function runSaveToObsidianFlow(meetingId, { onStep, writeToClipboar
             onStep(
                 "llm",
                 "failed",
-                `Needs ~${requiredTokens.toLocaleString()} tokens; model loaded with ${loadedContextLength.toLocaleString()}.`,
+                loadedContextLength !== undefined
+                    ? `Needs ~${requiredTokens.toLocaleString()} tokens; model loaded with ${loadedContextLength.toLocaleString()}.`
+                    : `Needs ~${requiredTokens.toLocaleString()} tokens; the server rejected the request for exceeding context.`,
             )
             onStep("markdown", "skipped")
             onStep("deliver", "skipped")
@@ -142,13 +169,18 @@ export async function runSaveToObsidianFlow(meetingId, { onStep, writeToClipboar
             return {
                 success: false,
                 retryable: true,
+                contextExceeded: { requiredTokens, loadedContextLength },
                 message: {
                     errorCode: "019",
                     errorMessage:
-                        `This meeting needs about ${requiredTokens.toLocaleString()} tokens of context, but the model ` +
-                        `is currently loaded in LM Studio with only ${loadedContextLength.toLocaleString()}. Load the ` +
-                        `model with a larger context length (LM Studio → Developer tab → select the model → Context ` +
-                        `Length) and try again.`,
+                        loadedContextLength !== undefined
+                            ? `This meeting needs about ${requiredTokens.toLocaleString()} tokens of context, but the model ` +
+                              `is currently loaded in LM Studio with only ${loadedContextLength.toLocaleString()}. Load the ` +
+                              `model with a larger context length (LM Studio → Developer tab → select the model → Context ` +
+                              `Length) and try again.`
+                            : `This meeting needs about ${requiredTokens.toLocaleString()} tokens of context, and the server ` +
+                              `rejected the request for exceeding its context length. Increase the model's context length ` +
+                              `in your provider and try again.`,
                 },
             }
         }

@@ -18,6 +18,7 @@ function showNotificationGoogleMeet(extensionStatusJSON) {
     // Banner CSS
     let html = document.querySelector("html")
     let obj = document.createElement("div")
+    let dot = document.createElement("span")
     let logo = document.createElement("img")
     let text = document.createElement("p")
 
@@ -27,24 +28,20 @@ function showNotificationGoogleMeet(extensionStatusJSON) {
     )
     logo.setAttribute("height", "32px")
     logo.setAttribute("width", "32px")
-    logo.style.cssText = "border-radius: 4px"
+    logo.style.cssText = "border-radius: 8px"
 
     // Remove banner after 5s
     setTimeout(() => {
         obj.style.display = "none"
     }, 5000)
 
-    if (extensionStatusJSON.status === 200) {
-        obj.style.cssText = `color: #2A9ACA; top: 5%; ${commonCSS}`
-        text.innerHTML = extensionStatusJSON.message
-    }
-    else {
-        obj.style.cssText = `color: orange; top: 5%; ${commonCSS}`
-        text.innerHTML = extensionStatusJSON.message
-    }
+    obj.style.cssText = `top: 5%; ${commonCSS}`
+    dot.style.cssText = `width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; background: ${extensionStatusJSON.status === 200 ? "#f34f16" : "orange"};`
+    text.innerHTML = extensionStatusJSON.message
 
     obj.prepend(text)
     obj.prepend(logo)
+    obj.prepend(dot)
     if (html)
         html.append(obj)
 }

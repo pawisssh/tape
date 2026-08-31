@@ -10,26 +10,27 @@ const LOG_ERROR_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbz0VFUYIke
 /** @type {MutationObserverInit} */
 const mutationConfig = { childList: true, attributes: true, subtree: true, characterData: true }
 
-const LOGO_URL = "https://ejnana.github.io/transcripto-status/icon.png"
-const commonCSS = `background: rgb(255 255 255 / 100%); 
-    backdrop-filter: blur(16px); 
+const LOGO_URL = chrome.runtime.getURL("extension/icon.png")
+const commonCSS = `background: rgba(44, 44, 46, 0.92);
+    color: rgba(255, 255, 255, 0.87);
+    backdrop-filter: blur(16px);
     position: fixed;
-    left: 0; 
-    right: 0; 
-    margin-left: auto; 
+    left: 0;
+    right: 0;
+    margin-left: auto;
     margin-right: auto;
-    max-width: 780px;  
-    z-index: 1000; 
+    max-width: 780px;
+    z-index: 1000;
     padding: 0rem 1rem;
-    border-radius: 8px; 
-    display: flex; 
-    justify-content: center; 
-    align-items: center; 
-    gap: 16px;  
-    font-size: 1rem; 
-    line-height: 1.5; 
-    font-family: "Google Sans",Roboto,Arial,sans-serif; 
-    box-shadow: rgba(0, 0, 0, 0.16) 0px 10px 36px 0px, rgba(0, 0, 0, 0.06) 0px 0px 0px 1px;`
+    border-radius: 18px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 16px;
+    font-size: 1rem;
+    line-height: 1.5;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+    box-shadow: 0px 16px 16px rgba(12, 12, 13, 0.1), 0px 4px 2px rgba(12, 12, 13, 0.05), 0 0 0 1px rgba(255, 255, 255, 0.12);`
 
 const NOTIFICATION_PLATFORM_CONFIGS = {
     "google_meet": {

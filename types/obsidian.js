@@ -32,7 +32,7 @@
  * @typedef {number} ObsidianLlmTimeoutMs Milliseconds to wait for the local LLM server to respond before aborting and falling back to the plain transcript note.
  */
 /**
- * @typedef {boolean} ObsidianLlmAutoRun Whether LLM summarization runs automatically as part of the Obsidian handoff. When `false`, the handoff skips it (falls straight to the plain transcript note) and the user is expected to trigger it manually instead — see the "summarize_meeting_now" message, handled by summarizeMeetingNow() in extension/background-script/meetings.js.
+ * @typedef {boolean} ObsidianLlmAutoRun Whether LLM summarization runs automatically as part of the Obsidian handoff. When `false`, the handoff skips it (falls straight to the plain transcript note) and the user is expected to trigger it manually instead — see summarizeNow() in extension/obsidian/summarize-now.js, called directly from MeetingDetailToolbar.tsx's "Summarize now".
  */
 /**
  * @typedef {string} ObsidianLlmSystemPrompt The full `role: "system"` message text sent to the LLM ahead of every summarization request (see enrichWithLlm() in extension/obsidian/llm.js) — user-editable on the Settings page's AI summary category, a full replace rather than an addendum to the built-in prompt. Empty/unset falls back to interpreter.js's INTERPRETER_SYSTEM_PROMPT (see getObsidianSettings()). Editing out its "respond with exactly one JSON object" instruction breaks summarization's response parsing — the Settings UI's "Reset to default" button is the recovery path, not a code-level guard.

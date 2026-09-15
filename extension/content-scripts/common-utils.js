@@ -408,6 +408,63 @@ function setFabRecordingState(isRecording) {
     }
 }
 
+/** Guards setFabJoinedState() so the pre-join → joined expand transition only ever
+ * fires once — hasMeetingStarted never reverts to false in any platform's state
+ * machine, so there's no reverse transition to support. */
+let fabHasJoined = false
+
+/**
+ * @description One-way transition from the FAB's compact pre-join look (Figma node
+ * 2048:28 — just the brand and menu segments) to the full 4-segment recording look
+ * (2043:460). Called once, right where each platform confirms the user has actually
+ * joined the meeting (state.hasMeetingStarted = true). Idempotent — a second call is
+ * a no-op, mirroring markCaptureFailed()/markCaptureRecovered()'s guard pattern.
+ * @param {boolean} hasJoined
+ */
+function setFabJoinedState(hasJoined) {
+    if (!hasJoined || fabHasJoined) return
+    fabHasJoined = true
+
+    const fab = /** @type {HTMLElement | null} */ (document.querySelector("#transcriptonic-fab"))
+    if (!fab) return
+
+    // Keep the FAB's right edge visually anchored while it grows — otherwise a FAB
+    // dragged near the right edge of the screen would spill off-screen as the timer
+    // and note segments expand. left/top aren't in the FAB's own transition list, so
+    // this shift is instant while the interior segments animate.
+    const widthDelta = FAB_TIMER_SEGMENT_WIDTH_PX + FAB_NOTE_SEGMENT_WIDTH_PX
+    const currentLeft = fab.getBoundingClientRect().left
+    const expandedFabWidth = fab.offsetWidth + widthDelta
+    const maxLeft = Math.max(0, window.innerWidth - expandedFabWidth)
+    fab.style.left = `${Math.max(0, Math.min(currentLeft - widthDelta, maxLeft))}px`
+
+    const noteButton = /** @type {HTMLElement} */ (fab.querySelector("#fab-note-button"))
+    if (noteButton) {
+        noteButton.removeAttribute("aria-hidden")
+        noteButton.setAttribute("tabindex", "0")
+        noteButton.style.width = `${FAB_NOTE_SEGMENT_WIDTH_PX}px`
+        noteButton.style.padding = "8px"
+        noteButton.style.opacity = "1"
+        noteButton.style.pointerEvents = "auto"
+    }
+
+    const timerSegment = /** @type {HTMLElement} */ (fab.querySelector("#fab-timer-segment"))
+    if (timerSegment) {
+        timerSegment.style.width = `${FAB_TIMER_SEGMENT_WIDTH_PX}px`
+        timerSegment.style.padding = "8px 12px 8px 8px"
+        timerSegment.style.opacity = "1"
+        timerSegment.style.pointerEvents = "auto"
+    }
+
+    const brandSegment = /** @type {HTMLElement} */ (fab.querySelector("#fab-brand-segment"))
+    if (brandSegment) brandSegment.style.borderRightColor = "transparent"
+
+    // Capture hasn't had a chance to fail yet — the FAB's first post-join look is
+    // always "recording"; markCaptureFailed() can still flip it to the not-recording
+    // look later exactly as before this state existed.
+    setFabRecordingState(true)
+}
+
 /**
  * @description Marks capture as failed (idempotent) and flips the FAB to its
  * not-recording look. Called both from the ~15s deadline check and from the
@@ -447,6 +504,13 @@ function scheduleCaptureFailureDeadline(state) {
     }, 15000)
 }
 
+/** Expanded pixel width of #fab-timer-segment / #fab-note-button once joined — kept as
+ * named constants (rather than intrinsic/auto sizing) so the collapse/expand transition
+ * and the drag right-edge-anchoring math in makeFabDraggable() use the same numbers and
+ * can't drift apart. */
+const FAB_TIMER_SEGMENT_WIDTH_PX = 136
+const FAB_NOTE_SEGMENT_WIDTH_PX = 48
+
 /**
  * @param {() => void} [onRetryCapture] Called when the user clicks/activates the
  * timer segment to manually retry starting capture (only meaningful while the FAB
@@ -456,8 +520,8 @@ function renderFab(onRetryCapture) {
     const fabCss = `
         position: fixed;
         top: 50%;
-        bottom: 50%;
         right: 8px;
+        transform: translateY(-50%);
         height: 40px;
         width: auto;
         border-radius: 8px;
@@ -469,6 +533,7 @@ function renderFab(onRetryCapture) {
         border: none;
         padding: 0;
         overflow: hidden;
+        visibility: hidden;
     `
 
     const html = document.querySelector("html")
@@ -477,18 +542,26 @@ function renderFab(onRetryCapture) {
     fab.title = "TranscripTonic"
     fab.style.cssText = fabCss
 
+    // Default look is the pre-join "not yet joined" state (Figma node 2048:28): just
+    // the brand segment (light bg, idle dark logo, hairline right divider) and the menu
+    // segment. The timer and note segments are already in the DOM but start collapsed
+    // (zero width/padding/opacity, non-interactive) — setFabJoinedState(true) expands
+    // them once the platform's real "meeting started" signal fires. Keeping a single
+    // persistent DOM tree (rather than swapping in a second markup tree) lets every
+    // existing handler below (click/keydown wiring, setFabRecordingState, startFabTimer,
+    // toggleNotePanel) keep targeting these same elements unmodified.
     fab.innerHTML = `
-        <div id="fab-brand-segment" role="button" tabindex="0" aria-label="Open TranscripTonic" style="background-color: #f34f16; height: 100%; display: flex; align-items: center; padding: 8px 12px; flex-shrink: 0; cursor: pointer;">
-            <img id="fab-brand-mark" src="${FAB_BRAND_MARK_URL}" alt="" draggable="false" style="width: 44px; height: 20px; object-fit: contain; display: block;" />
+        <div id="fab-brand-segment" role="button" tabindex="0" aria-label="Open TranscripTonic" style="background-color: #f6f6f6; height: 100%; display: flex; align-items: center; padding: 8px 12px; flex-shrink: 0; cursor: pointer; border-right: 1px solid rgba(0,0,0,0.12); transition: border-color 200ms ease;">
+            <img id="fab-brand-mark" src="${FAB_BRAND_MARK_IDLE_URL}" alt="" draggable="false" style="width: 44px; height: 20px; object-fit: contain; display: block;" />
         </div>
 
-        <div id="fab-timer-segment" style="background-color: black; height: 100%; display: flex; align-items: center; gap: 4px; padding: 8px 12px 8px 8px; flex-shrink: 0;">
-            <img id="fab-timer-icon" src="${FAB_RECORDING_ICON_URL}" alt="" draggable="false" style="width: 24px; height: 24px; display: block;" />
+        <div id="fab-timer-segment" style="background-color: black; height: 100%; display: flex; align-items: center; gap: 4px; padding: 0; flex-shrink: 0; width: 0; opacity: 0; overflow: hidden; pointer-events: none; transition: width 240ms ease, padding 240ms ease, opacity 200ms ease;">
+            <img id="fab-timer-icon" src="${FAB_RECORDING_ICON_URL}" alt="" draggable="false" style="width: 24px; height: 24px; display: block; flex-shrink: 0;" />
             <span id="fab-timer-text" style="color: white; font-weight: 700; font-size: 20px; line-height: 28px; white-space: nowrap; font-variant-numeric: tabular-nums; display: inline-block; min-width: 8ch; text-align: left; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;">0:00:00</span>
         </div>
 
-        <div id="fab-note-button" role="button" tabindex="0" aria-label="Add a note" title="Add a note" style="background-color: #f6f6f6; width: 48px; height: 100%; flex-shrink: 0; display: flex; align-items: center; justify-content: center; padding: 8px; cursor: pointer;">
-            <img src="${FAB_NOTE_ICON_URL}" alt="" draggable="false" style="width: 24px; height: 24px; display: block;" />
+        <div id="fab-note-button" role="button" tabindex="-1" aria-hidden="true" aria-label="Add a note" title="Add a note" style="background-color: #f6f6f6; width: 0; height: 100%; flex-shrink: 0; display: flex; align-items: center; justify-content: center; padding: 0; opacity: 0; overflow: hidden; pointer-events: none; cursor: pointer; transition: width 240ms ease, padding 240ms ease, opacity 200ms ease;">
+            <img src="${FAB_NOTE_ICON_URL}" alt="" draggable="false" style="width: 24px; height: 24px; display: block; flex-shrink: 0;" />
         </div>
 
         <div id="fab-menu-button" role="button" tabindex="0" aria-label="More options" title="More options" style="background-color: #f6f6f6; width: 48px; height: 100%; flex-shrink: 0; display: flex; align-items: center; justify-content: center; padding: 8px; cursor: pointer;">
@@ -497,7 +570,8 @@ function renderFab(onRetryCapture) {
     `
 
     html?.appendChild(fab)
-    makeVerticallyDraggable(fab)
+    positionFab(fab)
+    makeFabDraggable(fab)
 
     const brandSegment = /** @type {HTMLElement} */ (fab.querySelector("#fab-brand-segment"))
     const timerSegment = /** @type {HTMLElement} */ (fab.querySelector("#fab-timer-segment"))
@@ -713,21 +787,75 @@ function toggleNotePanel(fab) {
 }
 
 /**
+ * @description Places the FAB at its last dragged position (persisted in
+ * chrome.storage.local as `fabPosition`, clamped in case the viewport has since
+ * shrunk), or otherwise converts its default CSS-centered/right-anchored layout
+ * position into explicit left/top pixels — done synchronously right after the FAB is
+ * appended (before any paint), so there's no visible flash and makeFabDraggable() has
+ * a concrete left/top to drag from instead of the default's top:50%/right:8px.
  * @param {HTMLElement} fab
  */
-function makeVerticallyDraggable(fab) {
+function positionFab(fab) {
+    const applyDefaultPosition = () => {
+        const rect = fab.getBoundingClientRect()
+        fab.style.left = `${rect.left}px`
+        fab.style.top = `${rect.top}px`
+        fab.style.right = "auto"
+        fab.style.transform = "none"
+    }
+
+    chrome.storage.local.get(["fabPosition"], (resultUntyped) => {
+        const result = /** @type {ResultLocal} */ (resultUntyped)
+        const stored = result.fabPosition
+        if (stored) {
+            const maxLeft = Math.max(0, window.innerWidth - fab.offsetWidth)
+            const maxTop = Math.max(0, window.innerHeight - fab.offsetHeight)
+            fab.style.left = `${Math.max(0, Math.min(stored.left, maxLeft))}px`
+            fab.style.top = `${Math.max(0, Math.min(stored.top, maxTop))}px`
+            fab.style.right = "auto"
+            fab.style.transform = "none"
+        }
+        else {
+            applyDefaultPosition()
+        }
+        // Only reveal once positioned — chrome.storage.local.get() is async, so without
+        // this the FAB would flash at its default position for a frame before jumping
+        // to a restored one. renderFab() mounts it with visibility:hidden for this reason.
+        fab.style.visibility = "visible"
+    })
+}
+
+/**
+ * @description Free 2D dragging — the FAB can be moved to any position on screen
+ * (previously vertical-only, permanently pinned to the right edge). Tracks both axes
+ * from the FAB's actual rendered position (positionFab() has already converted its
+ * layout to explicit left/top pixels by the time this attaches), clamps to keep it
+ * fully inside the viewport, and persists the dropped position to chrome.storage.local
+ * so it's restored (via positionFab()) on the next meeting/reload.
+ * @param {HTMLElement} fab
+ */
+function makeFabDraggable(fab) {
     let isDragging = false
+    let startX = 0
     let startY = 0
+    let initialLeft = 0
     let initialTop = 0
     let hasMoved = false
+    let newLeft = 0
+    let newTop = 0
 
     const onPointerDown = (e) => {
         isDragging = true
         hasMoved = false
 
-        const clientY = e.touches ? e.touches[0].clientY : e.clientY
-        startY = clientY
-        initialTop = fab.getBoundingClientRect().top
+        const point = e.touches ? e.touches[0] : e
+        startX = point.clientX
+        startY = point.clientY
+        const rect = fab.getBoundingClientRect()
+        initialLeft = rect.left
+        initialTop = rect.top
+        newLeft = initialLeft
+        newTop = initialTop
 
         // Attach movement listeners to document so fast drags aren't lost
         document.addEventListener("mousemove", onPointerMove)
@@ -739,21 +867,23 @@ function makeVerticallyDraggable(fab) {
     const onPointerMove = (e) => {
         if (!isDragging) return
 
-        const clientY = e.touches ? e.touches[0].clientY : e.clientY
-        const deltaY = clientY - startY
+        const point = e.touches ? e.touches[0] : e
+        const deltaX = point.clientX - startX
+        const deltaY = point.clientY - startY
 
         // Threshold (3px) to differentiate click from drag
-        if (Math.abs(deltaY) > 3) {
+        if (Math.abs(deltaX) > 3 || Math.abs(deltaY) > 3) {
             hasMoved = true
             if (e.cancelable) e.preventDefault() // Prevent scrolling on touch
         }
 
-        let newTop = initialTop + deltaY
-
-        // Bound vertical position inside the visible viewport
+        // Bound position inside the visible viewport, on both axes
+        const maxLeft = window.innerWidth - fab.offsetWidth
         const maxTop = window.innerHeight - fab.offsetHeight
-        newTop = Math.max(0, Math.min(newTop, maxTop))
+        newLeft = Math.max(0, Math.min(initialLeft + deltaX, maxLeft))
+        newTop = Math.max(0, Math.min(initialTop + deltaY, maxTop))
 
+        fab.style.left = `${newLeft}px`
         fab.style.top = `${newTop}px`
     }
 
@@ -763,6 +893,10 @@ function makeVerticallyDraggable(fab) {
         document.removeEventListener("mouseup", onPointerUp)
         document.removeEventListener("touchmove", onPointerMove)
         document.removeEventListener("touchend", onPointerUp)
+
+        if (hasMoved) {
+            chrome.storage.local.set({ fabPosition: { left: newLeft, top: newTop } })
+        }
     }
 
     fab.addEventListener("mousedown", onPointerDown)
@@ -783,6 +917,11 @@ function unmountFab() {
         clearInterval(fabTimerIntervalId)
         fabTimerIntervalId = null
     }
+    // Teams re-injects into the same page (module scope persists) for back-to-back
+    // meetings in one tab, without a full reload — reset the one-way join-transition
+    // guard so the next meeting's FAB starts pre-join again instead of skipping
+    // straight to the recording look because setFabJoinedState() already fired once.
+    fabHasJoined = false
     const fab = document.querySelector("#transcriptonic-fab")
     if (fab) {
         fab.remove()

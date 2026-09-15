@@ -188,6 +188,7 @@
  * @property {Meeting[] | undefined} meetings
  * @property {LlmProviderConfig[] | undefined} obsidianLlmProviders saved LLM connectors (see extension/obsidian/providers.js) — local, not sync, since apiKey is a secret
  * @property {ObsidianLlmActiveModel | undefined} obsidianLlmActiveModel which provider+model is currently selected to summarize with
+ * @property {{left: number, top: number} | undefined} fabPosition last dragged position of the in-meeting FAB (extension/content-scripts/common-utils.js's renderFab()/makeFabDraggable()), restored on the next meeting/reload
  */
 
 // SYNC CHROME STORAGE VARIABLES

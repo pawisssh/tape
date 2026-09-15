@@ -146,6 +146,7 @@ function zoomMeetingRoutines(state) {
                         }
                         chrome.runtime.sendMessage(message, function () { })
                         state.hasMeetingStarted = true
+                        setFabJoinedState(true)
                         // Update meeting startTimestamp
                         state.meetingStartTimestamp = new Date().toISOString()
                         overWriteChromeStorage(state, ["meetingStartTimestamp"], false)

@@ -13,6 +13,7 @@ const mutationConfig = { childList: true, attributes: true, subtree: true, chara
 const LOGO_URL = chrome.runtime.getURL("extension/icon.png")
 const FAB_BRAND_MARK_URL = chrome.runtime.getURL("extension/fab-brand-mark.svg")
 const FAB_BRAND_MARK_INACTIVE_URL = chrome.runtime.getURL("extension/fab-brand-mark-inactive.svg")
+const FAB_BRAND_MARK_IDLE_URL = chrome.runtime.getURL("extension/fab-brand-mark-idle.svg")
 const FAB_RECORDING_ICON_URL = chrome.runtime.getURL("extension/fab-recording-icon.svg")
 const FAB_PLAY_ICON_URL = chrome.runtime.getURL("extension/fab-play-icon.svg")
 const FAB_NOTE_ICON_URL = chrome.runtime.getURL("extension/fab-note-icon.svg")

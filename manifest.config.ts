@@ -85,6 +85,7 @@ export default defineManifest({
                 "extension/icon.png",
                 "extension/fab-brand-mark.svg",
                 "extension/fab-brand-mark-inactive.svg",
+                "extension/fab-brand-mark-idle.svg",
                 "extension/fab-recording-icon.svg",
                 "extension/fab-play-icon.svg",
                 "extension/fab-note-icon.svg",

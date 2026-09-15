@@ -147,6 +147,7 @@
  * @property {boolean} hasMeetingStarted
  * @property {boolean} hasMeetingEnded
  * @property {ExtensionStatusJSON} extensionStatusJSON
+ * @property {HTMLIFrameElement | null} [zoomIframe] Zoom only — stashed once found, so a manual capture retry can re-target the transcript container without re-deriving the iframe chain
  */
 /**
  * @typedef {Object} ExtensionMessage Message sent by the calling script

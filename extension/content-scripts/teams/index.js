@@ -62,10 +62,60 @@ function initTeams() {
 }
 
 /**
+ * @description Waits for the captions region to appear and attaches the transcript
+ * MutationObserver. Extracted as its own function so it can be re-invoked as a
+ * manual retry when auto-record fails to attach — see attemptManualCaptureRetryTeams().
+ * Safe to call again even while a prior call is still pending (e.g. hung in
+ * waitForElement(), which never times out on its own): the success path only acts
+ * if state.transcriptTargetNode isn't already set, so a stale/duplicate resolution
+ * is a no-op instead of double-attaching.
+ * @param {ContentScriptState} state
+ */
+function attachTranscriptListenerTeams(state) {
+  // Wait for transcript node to be visible
+  return waitForElement(SELECTORS_TEAMS.CAPTIONS_REGION).then((element) => {
+    console.log("Found captions container")
+    if (!element) {
+      throw new Error("Transcript element not found in DOM")
+    }
+    // Already attached by a prior (or concurrently retried) attempt — avoid
+    // registering a second MutationObserver on the same node.
+    if (state.transcriptTargetNode) {
+      return
+    }
+
+    // CRITICAL DOM DEPENDENCY. Grab the transcript element.
+    state.transcriptTargetNode = element
+    // Create transcript observer instance linked to the callback function. Registered irrespective of operation mode, so that any visible transcript can be picked up during the meeting, independent of the operation mode.
+    // Initial attach and monitor every 2s
+    startTranscriptMonitor(state)
+    markCaptureRecovered(state)
+  })
+    .catch((err) => {
+      console.error(err)
+      markCaptureFailed(state)
+      showNotificationTeams(extensionStatusJSON_bug)
+
+      logError(state, "001", err)
+    })
+}
+
+/**
+ * @description Click handler for the FAB's not-recording play icon — re-runs the
+ * transcript attach chain. No-ops if capture isn't currently marked failed.
+ * @param {ContentScriptState} state
+ */
+function attemptManualCaptureRetryTeams(state) {
+  if (!state.isTranscriptDomErrorCaptured) return
+  console.log("Manual capture retry triggered")
+  attachTranscriptListenerTeams(state)
+}
+
+/**
  * @param {ContentScriptState} state
  */
 function teamsMeetingRoutines(state) {
-  renderFab()
+  renderFab(() => attemptManualCaptureRetryTeams(state))
 
   // CRITICAL DOM DEPENDENCY. Wait until the meeting end icon appears, used to detect meeting start
   waitForElement(SELECTORS_TEAMS.HANGUP_BUTTON).then(() => {
@@ -101,29 +151,11 @@ function teamsMeetingRoutines(state) {
     })
 
     // **** REGISTER TRANSCRIPT LISTENER **** //
-    // Wait for transcript node to be visible
-    waitForElement(SELECTORS_TEAMS.CAPTIONS_REGION).then((element) => {
-      console.log("Found captions container")
-      // CRITICAL DOM DEPENDENCY. Grab the transcript element.
-      state.transcriptTargetNode = element
-
-      if (state.transcriptTargetNode) {
-        // Create transcript observer instance linked to the callback function. Registered irrespective of operation mode, so that any visible transcript can be picked up during the meeting, independent of the operation mode.
-        // Initial attach and monitor every 2s
-        startTranscriptMonitor(state)
-      }
-      else {
-        throw new Error("Transcript element not found in DOM")
-      }
-    })
-      .catch((err) => {
-        console.error(err)
-        state.isTranscriptDomErrorCaptured = true
-        setFabRecordingState(false)
-        showNotificationTeams(extensionStatusJSON_bug)
-
-        logError(state, "001", err)
-      })
+    attachTranscriptListenerTeams(state)
+    // waitForElement() never times out on its own — it polls forever — so this is the
+    // real-world detector for "auto-record silently never attached" (as opposed to the
+    // narrower DOM-race errors attachTranscriptListenerTeams's own .catch() covers).
+    scheduleCaptureFailureDeadline(state)
 
 
     //*********** MEETING END ROUTINES **********//
@@ -219,8 +251,7 @@ function transcriptMutationCallbackTeams(state, mutationsList) {
 
         logError(state, "005", err)
       }
-      state.isTranscriptDomErrorCaptured = true
-      setFabRecordingState(false)
+      markCaptureFailed(state)
     }
   })
 }

@@ -29,6 +29,7 @@ function createContentScriptState(meetingSoftware, platform) {
         isChatMessagesDomErrorCaptured: false,
         hasMeetingStarted: false,
         hasMeetingEnded: false,
+        zoomIframe: null,
         extensionStatusJSON: {
             status: 200,
             message: "<strong>TranscripTonic is running</strong> <br /> Do not turn off captions"
@@ -384,9 +385,69 @@ function setFabRecordingState(isRecording) {
         }
         if (timerText) timerText.textContent = "0:00:00"
     }
+
+    const timerSegment = /** @type {HTMLElement} */ (fab.querySelector("#fab-timer-segment"))
+    if (timerSegment) {
+        if (isRecording) {
+            timerSegment.removeAttribute("role")
+            timerSegment.removeAttribute("tabindex")
+            timerSegment.removeAttribute("aria-label")
+            timerSegment.style.cursor = "default"
+        }
+        else {
+            timerSegment.setAttribute("role", "button")
+            timerSegment.setAttribute("tabindex", "0")
+            timerSegment.setAttribute("aria-label", "Retry starting capture")
+            timerSegment.style.cursor = "pointer"
+        }
+    }
 }
 
-function renderFab() {
+/**
+ * @description Marks capture as failed (idempotent) and flips the FAB to its
+ * not-recording look. Called both from the ~15s deadline check and from the
+ * narrower DOM-race error paths in each platform's caption-attach chain.
+ * @param {ContentScriptState} state
+ */
+function markCaptureFailed(state) {
+    if (state.isTranscriptDomErrorCaptured) return
+    state.isTranscriptDomErrorCaptured = true
+    setFabRecordingState(false)
+}
+
+/**
+ * @description Marks capture as recovered (idempotent) and flips the FAB back to
+ * its recording look. Called once a caption-attach attempt (initial or retried)
+ * actually succeeds.
+ * @param {ContentScriptState} state
+ */
+function markCaptureRecovered(state) {
+    if (!state.isTranscriptDomErrorCaptured) return
+    state.isTranscriptDomErrorCaptured = false
+    setFabRecordingState(true)
+}
+
+/**
+ * @description Schedules the ~15s deadline used to detect the common "auto-record
+ * silently never attaches" case, since waitForElement() polls forever and never
+ * times out or rejects on its own. If no transcript target node has been found by
+ * the deadline, treats capture as failed.
+ * @param {ContentScriptState} state
+ */
+function scheduleCaptureFailureDeadline(state) {
+    setTimeout(() => {
+        if (!state.transcriptTargetNode && !state.hasMeetingEnded) {
+            markCaptureFailed(state)
+        }
+    }, 15000)
+}
+
+/**
+ * @param {() => void} [onRetryCapture] Called when the user clicks/activates the
+ * timer segment to manually retry starting capture (only meaningful while the FAB
+ * is in its not-recording look — role/tabindex are only exposed then).
+ */
+function renderFab(onRetryCapture) {
     const fabCss = `
         position: fixed;
         top: 50%;
@@ -434,6 +495,7 @@ function renderFab() {
     makeVerticallyDraggable(fab)
 
     const brandSegment = /** @type {HTMLElement} */ (fab.querySelector("#fab-brand-segment"))
+    const timerSegment = /** @type {HTMLElement} */ (fab.querySelector("#fab-timer-segment"))
     const noteButton = /** @type {HTMLElement} */ (fab.querySelector("#fab-note-button"))
     const menuButton = /** @type {HTMLElement} */ (fab.querySelector("#fab-menu-button"))
 
@@ -462,6 +524,21 @@ function renderFab() {
             e.preventDefault()
             e.stopPropagation()
             toggleNotePanel(fab)
+        }
+    })
+
+    // Only meaningful in the not-recording look (setFabRecordingState toggles the
+    // role/tabindex that make this segment focusable) — onRetryCapture itself also
+    // no-ops while already recording, via its own isTranscriptDomErrorCaptured guard.
+    timerSegment.addEventListener("click", (e) => {
+        e.stopPropagation()
+        onRetryCapture?.()
+    })
+    timerSegment.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault()
+            e.stopPropagation()
+            onRetryCapture?.()
         }
     })
 

@@ -43,10 +43,90 @@ function initGoogleMeet() {
 }
 
 /**
+ * @description Waits for the captions region to appear and attaches the transcript
+ * MutationObserver. Extracted as its own function (rather than inline in
+ * googleMeetRoutines) so it can be re-invoked as a manual retry when auto-record
+ * fails to attach — see attemptManualCaptureRetryGoogleMeet(). Safe to call again
+ * even while a prior call is still pending (e.g. hung in waitForElement(), which
+ * never times out on its own): the success path only acts if state.transcriptTargetNode
+ * isn't already set, so a stale/duplicate resolution is a no-op instead of double-attaching.
+ * @param {ContentScriptState} state
+ */
+function attachTranscriptListenerGoogleMeet(state) {
+    // Wait for captions icon to be visible. When user is waiting in meeting lobbing for someone to let them in, the call end icon is visible, but the captions icon is still not visible.
+    return waitForElement(SELECTORS_GOOGLE_MEET.GOOGLE_SYMBOLS, SELECTORS_GOOGLE_MEET.TEXT_CAPTIONS)
+        .then(() => {
+            // CRITICAL DOM DEPENDENCY
+            const captionsButton = selectElements(SELECTORS_GOOGLE_MEET.GOOGLE_SYMBOLS, SELECTORS_GOOGLE_MEET.TEXT_CAPTIONS)[0]
+
+            // Click captions icon for non manual operation modes. Async operation.
+            chrome.storage.sync.get(["operationMode"], function (resultSyncUntyped) {
+                const resultSync = /** @type {ResultSync} */ (resultSyncUntyped)
+                if (resultSync.operationMode === "manual") {
+                    console.log("Manual mode selected, leaving transcript off")
+                }
+                else {
+                    captionsButton.click()
+                }
+            })
+
+            // Allow DOM to be updated. Once updated, next "then" block will be executed.
+            return waitForElement(SELECTORS_GOOGLE_MEET.TRANSCRIPT_REGION)
+                .then(targetNode => (targetNode))
+        })
+        .then((targetNode) => {
+            if (!targetNode) {
+                throw new Error("Transcript element not found in DOM")
+            }
+            // Already attached by a prior (or concurrently retried) attempt — avoid
+            // registering a second MutationObserver on the same node.
+            if (state.transcriptTargetNode) {
+                return
+            }
+
+            // CRITICAL DOM DEPENDENCY. Grab the transcript element. This element is present, irrespective of captions ON/OFF, so this executes independent of operation mode.
+            state.transcriptTargetNode = targetNode
+            // Initial attach and monitor every 2s
+            startTranscriptMonitor(state)
+            markCaptureRecovered(state)
+
+            // Show confirmation message from extensionStatusJSON, once observation has started, based on operation mode
+            chrome.storage.sync.get(["operationMode"], function (resultSyncUntyped) {
+                const resultSync = /** @type {ResultSync} */ (resultSyncUntyped)
+                if (resultSync.operationMode === "manual") {
+                    showNotificationGoogleMeet({ status: 400, message: "<strong>TranscripTonic is not running</strong> <br /> Turn on captions using the CC icon, if needed" })
+                }
+                else {
+                    showNotificationGoogleMeet(state.extensionStatusJSON)
+                }
+            })
+        })
+        .catch((err) => {
+            console.error(err)
+            markCaptureFailed(state)
+            showNotificationGoogleMeet(extensionStatusJSON_bug)
+
+            logError(state, "001", err)
+        })
+}
+
+/**
+ * @description Click handler for the FAB's not-recording play icon — re-runs the
+ * transcript attach chain. No-ops if capture isn't currently marked failed (also
+ * covers the case where the FAB fires this after capture has already recovered).
+ * @param {ContentScriptState} state
+ */
+function attemptManualCaptureRetryGoogleMeet(state) {
+    if (!state.isTranscriptDomErrorCaptured) return
+    console.log("Manual capture retry triggered")
+    attachTranscriptListenerGoogleMeet(state)
+}
+
+/**
  * @param {ContentScriptState} state
  */
 function googleMeetRoutines(state) {
-    renderFab()
+    renderFab(() => attemptManualCaptureRetryGoogleMeet(state))
 
     // NON CRITICAL DOM DEPENDENCY
     captureUserName(state)
@@ -71,58 +151,11 @@ function googleMeetRoutines(state) {
         // **** REGISTER TRANSCRIPT AND CHAT MESSAGES LISTENERS **** //
 
         // REGISTER TRANSCRIPT LISTENER
-        // Wait for captions icon to be visible. When user is waiting in meeting lobbing for someone to let them in, the call end icon is visible, but the captions icon is still not visible.
-        waitForElement(SELECTORS_GOOGLE_MEET.GOOGLE_SYMBOLS, SELECTORS_GOOGLE_MEET.TEXT_CAPTIONS)
-            .then(() => {
-                // CRITICAL DOM DEPENDENCY
-                const captionsButton = selectElements(SELECTORS_GOOGLE_MEET.GOOGLE_SYMBOLS, SELECTORS_GOOGLE_MEET.TEXT_CAPTIONS)[0]
-
-                // Click captions icon for non manual operation modes. Async operation.
-                chrome.storage.sync.get(["operationMode"], function (resultSyncUntyped) {
-                    const resultSync = /** @type {ResultSync} */ (resultSyncUntyped)
-                    if (resultSync.operationMode === "manual") {
-                        console.log("Manual mode selected, leaving transcript off")
-                    }
-                    else {
-                        captionsButton.click()
-                    }
-                })
-
-                // Allow DOM to be updated. Once updated, next "then" block will be executed.
-                return waitForElement(SELECTORS_GOOGLE_MEET.TRANSCRIPT_REGION)
-                    .then(targetNode => (targetNode))
-            })
-            .then((targetNode) => {
-                if (targetNode) {
-                    // CRITICAL DOM DEPENDENCY. Grab the transcript element. This element is present, irrespective of captions ON/OFF, so this executes independent of operation mode.
-                    state.transcriptTargetNode = targetNode
-                    // Initial attach and monitor every 2s
-                    startTranscriptMonitor(state)
-
-                    // Show confirmation message from extensionStatusJSON, once observation has started, based on operation mode
-                    chrome.storage.sync.get(["operationMode"], function (resultSyncUntyped) {
-                        const resultSync = /** @type {ResultSync} */ (resultSyncUntyped)
-                        if (resultSync.operationMode === "manual") {
-                            showNotificationGoogleMeet({ status: 400, message: "<strong>TranscripTonic is not running</strong> <br /> Turn on captions using the CC icon, if needed" })
-                        }
-                        else {
-                            showNotificationGoogleMeet(state.extensionStatusJSON)
-                        }
-                    })
-                }
-                else {
-                    throw new Error("Transcript element not found in DOM")
-                }
-            })
-            .catch((err) => {
-                console.error(err)
-                state.isTranscriptDomErrorCaptured = true
-                setFabRecordingState(false)
-                showNotificationGoogleMeet(extensionStatusJSON_bug)
-
-                logError(state, "001", err)
-            })
-
+        attachTranscriptListenerGoogleMeet(state)
+        // waitForElement() never times out on its own — it polls forever — so this is the
+        // real-world detector for "auto-record silently never attached" (as opposed to the
+        // narrower DOM-race errors attachTranscriptListenerGoogleMeet's own .catch() covers).
+        scheduleCaptureFailureDeadline(state)
 
         // REGISTER CHAT MESSAGES LISTENER
         // Wait for chat icon to be visible. When user is waiting in meeting lobbing for someone to let them in, the call end icon is visible, but the chat icon is still not visible.
@@ -278,8 +311,7 @@ function transcriptMutationCallbackGoogleMeet(state, mutationsList) {
 
                 logError(state, "005", err)
             }
-            state.isTranscriptDomErrorCaptured = true
-            setFabRecordingState(false)
+            markCaptureFailed(state)
         }
     })
 }

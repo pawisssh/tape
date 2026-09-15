@@ -63,14 +63,73 @@ function initZoom() {
 }
 
 /**
+ * @description Waits for the captions container to appear inside the meeting iframe
+ * and attaches the transcript MutationObserver. Extracted as its own function so it
+ * can be re-invoked as a manual retry when auto-record fails to attach — see
+ * attemptManualCaptureRetryZoom(). Safe to call again even while a prior call is
+ * still pending (e.g. hung in waitForElement(), which never times out on its own):
+ * the success path only acts if state.transcriptTargetNode isn't already set, so a
+ * stale/duplicate resolution is a no-op instead of double-attaching.
+ * @param {ContentScriptState} state
+ * @param {HTMLIFrameElement} iframe
+ */
+function attachTranscriptListenerZoom(state, iframe) {
+    // Wait for transcript node to be visible
+    return waitForElement(SELECTORS_ZOOM.TRANSCRIPT_CONTAINER, undefined, iframe).
+        then((element) => {
+            console.log("Found captions container")
+            if (!element) {
+                throw new Error("Transcript element not found in DOM")
+            }
+            // Already attached by a prior (or concurrently retried) attempt — avoid
+            // registering a second MutationObserver on the same node.
+            if (state.transcriptTargetNode) {
+                return
+            }
+
+            // CRITICAL DOM DEPENDENCY. Grab the transcript element.
+            state.transcriptTargetNode = element
+            console.log(`Registering mutation observer on ${SELECTORS_ZOOM.TRANSCRIPT_CONTAINER}`)
+
+            // Create transcript observer instance linked to the callback function. Registered irrespective of operation mode, so that any visible transcript can be picked up during the meeting, independent of the operation mode.
+            // Initial attach and monitor every 2s
+            startTranscriptMonitor(state)
+            markCaptureRecovered(state)
+        })
+        .catch((err) => {
+            console.error(err)
+            markCaptureFailed(state)
+            showNotificationZoom(extensionStatusJSON_bug)
+
+            logError(state, "001", err)
+        })
+}
+
+/**
+ * @description Click handler for the FAB's not-recording play icon — re-runs the
+ * transcript attach chain against the stashed iframe. No-ops if capture isn't
+ * currently marked failed, or if the iframe reference isn't available yet.
+ * @param {ContentScriptState} state
+ */
+function attemptManualCaptureRetryZoom(state) {
+    if (!state.isTranscriptDomErrorCaptured) return
+    if (!state.zoomIframe) return
+    console.log("Manual capture retry triggered")
+    attachTranscriptListenerZoom(state, state.zoomIframe)
+}
+
+/**
  * @param {ContentScriptState} state
  */
 function zoomMeetingRoutines(state) {
-    renderFab()
+    renderFab(() => attemptManualCaptureRetryZoom(state))
 
     waitForElement(SELECTORS_ZOOM.IFRAME).then(() => {
         console.log(`Found iframe`)
         const iframe = /** @type {HTMLIFrameElement | null} */ (document.querySelector(SELECTORS_ZOOM.IFRAME))
+        // Stashed so a manual capture retry can re-target the transcript container
+        // without re-deriving the iframe/hasIframeLoaded chain.
+        state.zoomIframe = iframe
 
         if (iframe) {
             hasIframeLoaded(iframe).then(() => {
@@ -98,32 +157,12 @@ function zoomMeetingRoutines(state) {
                         showNotificationZoom(state.extensionStatusJSON)
 
                         // **** REGISTER TRANSCRIPT LISTENER **** //
-                        // Wait for transcript node to be visible
-                        waitForElement(SELECTORS_ZOOM.TRANSCRIPT_CONTAINER, undefined, iframe).
-                            then((element) => {
-                                console.log("Found captions container")
-                                // CRITICAL DOM DEPENDENCY. Grab the transcript element.
-                                state.transcriptTargetNode = element
-
-                                if (state.transcriptTargetNode) {
-                                    console.log(`Registering mutation observer on ${SELECTORS_ZOOM.TRANSCRIPT_CONTAINER}`)
-
-                                    // Create transcript observer instance linked to the callback function. Registered irrespective of operation mode, so that any visible transcript can be picked up during the meeting, independent of the operation mode.
-                                    // Initial attach and monitor every 2s
-                                    startTranscriptMonitor(state)
-                                }
-                                else {
-                                    throw new Error("Transcript element not found in DOM")
-                                }
-                            })
-                            .catch((err) => {
-                                console.error(err)
-                                state.isTranscriptDomErrorCaptured = true
-                                setFabRecordingState(false)
-                                showNotificationZoom(extensionStatusJSON_bug)
-
-                                logError(state, "001", err)
-                            })
+                        attachTranscriptListenerZoom(state, iframe)
+                        // waitForElement() never times out on its own — it polls forever — so
+                        // this is the real-world detector for "auto-record silently never
+                        // attached" (as opposed to the narrower DOM-race errors
+                        // attachTranscriptListenerZoom's own .catch() covers).
+                        scheduleCaptureFailureDeadline(state)
 
 
                         //*********** MEETING END ROUTINES **********//
@@ -221,8 +260,7 @@ function transcriptMutationCallbackZoom(state, mutationsList) {
 
                 logError(state, "005", err)
             }
-            state.isTranscriptDomErrorCaptured = true
-            setFabRecordingState(false)
+            markCaptureFailed(state)
         }
     })
 }

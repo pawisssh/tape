@@ -131,7 +131,7 @@ describe("getObsidianSettings / setObsidianSettings", () => {
         assert.equal(settings.obsidianLlmEndpoint, "")
         assert.equal(settings.obsidianLlmModel, "")
         assert.equal(settings.obsidianLlmApiKey, undefined)
-        assert.equal(settings.obsidianLlmTimeoutMs, 300000)
+        assert.equal(settings.obsidianLlmTimeoutMs, 600000)
         assert.deepEqual(settings.obsidianLlmSummaryTemplates, [])
     })
 

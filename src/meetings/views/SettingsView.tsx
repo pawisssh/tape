@@ -8,7 +8,7 @@ import { Separator } from "@/components/ui/separator"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Button } from "@/components/ui/button"
-import { getSync, setSync } from "@/lib/chrome-storage"
+import { getSync, setSync, onStorageChanged } from "@/lib/chrome-storage"
 import { useDebouncedEffect } from "@/hooks/use-debounced-effect"
 import { cn } from "@/lib/utils"
 import MasterDetailLayout from "../components/MasterDetailLayout"
@@ -19,7 +19,7 @@ import MobileBackButton from "../components/MobileBackButton"
 // getObsidianSettings() is the one place that actually falls back to it at read time.
 import { INTERPRETER_SYSTEM_PROMPT } from "../../../extension/obsidian/interpreter.js"
 
-const DEFAULT_LLM_TIMEOUT_MS = 300000
+const DEFAULT_LLM_TIMEOUT_MS = 600000
 
 type SettingsCategory = "capture" | "ai" | "about"
 
@@ -37,7 +37,7 @@ export default function SettingsView() {
     const [activeCategory, setActiveCategory] = useState<SettingsCategory>("capture")
     const [mobileDetailOpen, setMobileDetailOpen] = useState(false)
     const [version, setVersion] = useState("")
-    const [operationMode, setOperationMode] = useState<"auto" | "manual">("auto")
+    const [operationMode, setOperationMode] = useState<OperationMode>("auto")
     const [hideCaptions, setHideCaptions] = useState(false)
     const [llmEnabled, setLlmEnabled] = useState(false)
     const [llmAutoRun, setLlmAutoRun] = useState(true)
@@ -54,7 +54,7 @@ export default function SettingsView() {
             "obsidianLlmTimeoutMs",
             "obsidianLlmSystemPrompt",
         ]).then((result) => {
-            setOperationMode(result.operationMode === "manual" ? "manual" : "auto")
+            setOperationMode(result.operationMode === "manual" ? "manual" : result.operationMode === "off" ? "off" : "auto")
             setHideCaptions(result.hideCaptions === true)
             setLlmEnabled(result.obsidianUseLlm === true)
             setLlmAutoRun(result.obsidianLlmAutoRun !== false)
@@ -63,8 +63,21 @@ export default function SettingsView() {
         })
     }, [])
 
+    // Keeps this page's "Capture mode" radio group in sync when operationMode is changed
+    // elsewhere while this page is open — most notably the sidebar's compact 3-way toggle
+    // (App.tsx), which is always mounted alongside this view and writes operationMode
+    // directly. Separate from the mount-only load effect above (which reads every setting
+    // this page owns) since this one only needs to react to this one field changing.
+    useEffect(() => {
+        return onStorageChanged((changes, area) => {
+            if (area !== "sync" || !changes.operationMode) return
+            const next = changes.operationMode.newValue
+            setOperationMode(next === "manual" ? "manual" : next === "off" ? "off" : "auto")
+        })
+    }, [])
+
     function handleOperationModeChange(value: string) {
-        const mode = value === "manual" ? "manual" : "auto"
+        const mode: OperationMode = value === "manual" ? "manual" : value === "off" ? "off" : "auto"
         setOperationMode(mode)
         setSync({ operationMode: mode })
     }
@@ -163,6 +176,13 @@ export default function SettingsView() {
                                         </span>
                                     </Label>
                                 </div>
+                                <div className="flex items-start gap-2">
+                                    <RadioGroupItem value="off" id="off-mode" className="mt-0.5" />
+                                    <Label htmlFor="off-mode" className="flex-col items-start font-normal">
+                                        <span className="font-bold text-meetings-ink">Off</span>
+                                        <span className="text-meetings-ink-muted">Don't capture any meetings</span>
+                                    </Label>
+                                </div>
                             </RadioGroup>
 
                             <Separator className="my-4" />
@@ -214,14 +234,14 @@ export default function SettingsView() {
                                     className="mt-2 rounded-none"
                                     min={1000}
                                     step={1000}
-                                    placeholder="300000"
+                                    placeholder="600000"
                                     value={llmTimeoutMs}
                                     disabled={!llmEnabled}
                                     onChange={(e) => setLlmTimeoutMs(e.target.value)}
                                 />
                                 <p className="mt-1 text-xs text-meetings-ink-muted">
                                     How long to wait before giving up and saving the plain transcript instead.
-                                    Default is 300000 (5 minutes) — models can be slow, especially on long
+                                    Default is 600000 (10 minutes) — models can be slow, especially on long
                                     transcripts.
                                 </p>
                             </div>

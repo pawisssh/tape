@@ -1,4 +1,4 @@
-# Implementation Plan: Fork transcriptonic → `tape`
+let# Implementation Plan: Fork transcriptonic → `tape`
 
 **Document type:** Hand-off spec for an implementing AI. Written by the tech-lead session; the same tech-lead session will review the work against this document once implementation is reported complete. Follow it directly — do not re-derive the architecture decisions below, they are the result of prior research and are settled unless explicitly marked "confirm."
 
@@ -210,6 +210,64 @@ npx shadcn@latest init -b base
 - `README.md` covering: install-from-source steps, Obsidian vault/folder/filename config with one worked example, local-LLM setup instructions for both LM Studio and Ollama, and explicitly documented known limits (status is "sent," never "confirmed saved"; vault name must match exactly; destination folder must already exist; the "Open Obsidian?" prompt is tab-modal and closing the tab early dismisses it).
 
 **DoD:** all of the above complete; `MANUAL_TESTING.md` shows every phase's checklist checked off against the final build.
+
+### Phase 7 — Hardening, security & cleanup (2026-08-31 review findings)
+
+Phases 0–6 above are complete and the extension has grown well past their original DoD (visual redesign, multi-provider LLM support, context-window pre-flight detection + buffered comparison, real request cancellation, a 3-state capture-mode toggle, etc. — none of that is re-litigated here). This phase captures findings from a full code/architecture/UX review of the extension as it stands today, ordered by severity. Each item is independent — implement and ship them in any order, one at a time, not as a single big change.
+
+**7.1 — Fix the duplicate-processing race in the background script (highest priority, correctness bug)**
+
+`"meeting_ended"` (`extension/background-script/index.js:35-60`) and `chrome.tabs.onRemoved` (`index.js:274-294`) can both fire for the same meeting close. Both do check-then-act on the `meetingTabId` sentinel across separate async `chrome.storage.local.get`/`.set` calls with no atomicity — a meeting-end click followed shortly by the tab actually closing (a realistic sequence) can let both handlers read the pre-"processing" value before either write commits, running `processLastMeeting()` twice concurrently. `pickupLastMeetingFromStorage()` (`meetings.js:72-121`) and `postTranscriptToWebhook()` (`exporters.js:97-171`) both then do their own unguarded read-modify-write on the `meetings` array, so this can produce duplicate meeting entries, duplicate downloads/webhook posts, or a lost webhook-status update.
+
+Fix: introduce a single, explicit finalization guard — e.g. an in-memory `Set`/flag keyed by the meeting's stable id (or the existing `meetingTabId` sentinel, but written and checked as close together as possible, ideally within one storage transaction shape) that both `"meeting_ended"` and `onRemoved` check before calling `processLastMeeting()`, so only the first one to arrive actually runs it. Since `chrome.storage.local` has no compare-and-swap, the practical fix is to serialize the check+set into a single code path both listeners call through (a shared async function that itself holds a simple in-worker mutex/promise-chain — the service worker is single-threaded per event loop tick, so a plain in-memory flag checked synchronously before the first `await` is sufficient to close the window between the two listeners, unlike the current cross-listener storage round trip).
+
+**DoD:** a unit test (new, under `tests/` — this is the first automated coverage for `background-script/`) simulating both listeners firing in quick succession against a faked `chrome.storage` resolves to exactly one `processLastMeeting()` invocation. Manual: end a meeting via the in-page "Leave" button (which triggers both the content script's `meeting_ended` message and, moments later, the tab close) and confirm exactly one meeting entry appears, not two.
+
+**7.2 — Webhook (and custom LLM provider) HTTPS enforcement**
+
+Neither `WebhookSection.tsx` nor `ProviderPanel.tsx` validate the URL scheme before saving/connecting — a plain `http://` endpoint is accepted silently, and meeting transcripts (webhook) or transcript+API-key (LLM provider) get sent unencrypted with no warning anywhere in the UI.
+
+Fix: in both components' save/connect handlers, if the entered URL's scheme is `http:` (not `https:`) and the host isn't `localhost`/`127.0.0.1`/a private-network address (local LLM servers are legitimately plain HTTP on localhost — don't warn on those), show an inline warning ("This endpoint isn't encrypted — data sent to it can be intercepted") requiring an explicit acknowledgement before Connect proceeds, rather than blocking outright.
+
+**DoD:** unit tests for the new scheme-check helper (accepts https always; accepts http only for localhost/private ranges; flags everything else) in `tests/`. Manual: entering a public `http://` webhook/provider URL shows the warning; `https://` and `http://localhost:*` do not.
+
+**7.3 — README privacy claim is stale**
+
+`README.md` states transcript data "does not leave the device, unless you configure a webhook" — omitting that a configured cloud/custom AI provider also sends transcript content off-device. Fix: update that paragraph to cover both paths (webhook and AI provider), and add a short feature-list update covering Obsidian export, Templates, and multi-provider AI summarization, none of which the README currently mentions at all.
+
+**DoD:** README reviewed against the actual current feature set; no factual gaps between what's shipped and what's documented.
+
+**7.4 — `ProviderPanel.tsx`'s two divergent save paths**
+
+Fields autosave on a 700ms debounce with zero visible feedback, entirely separate from the explicit "Connect" button's own save-plus-permission-request. A user who edits and navigates away without clicking Connect has silently persisted (including a secret API key) with no confirmation anything happened, and the two paths are a drift risk (a fix applied to one can be missed in the other).
+
+Fix: keep the debounced autosave (permission requests genuinely need a real click, so Connect can't fully subsume it), but give the autosave a visible, low-key confirmation (e.g. a transient "Saved" label near the field, not a toast) so the two paths are at least both legible to the user.
+
+**DoD:** manual check — editing any field shows a brief save confirmation without needing to click Connect.
+
+**7.5 — Platform toggle "(beta)" label inconsistency**
+
+`src/popup/App.tsx` labels Teams/Zoom "(beta)"; `IntegrationsView.tsx` labels the identical setting plainly, with no qualifier. Fix: match the wording in both places (simplest: adopt whichever is still accurate — check with the user if Teams/Zoom are still meant to be beta before picking one).
+
+**DoD:** grep confirms one consistent label string used in both surfaces.
+
+**7.6 — Template import accepts anything silently**
+
+`templateFromWebClipperJson` (`extension/obsidian/templates.js:254-287`) never throws — arbitrary JSON becomes an empty "Imported template" with a success toast, giving no signal that the wrong file was pasted/dropped.
+
+Fix: add a minimal shape check before treating the parsed JSON as a template (e.g. require at least one of `name`/`properties`/`noteContent` to be present and roughly the right type) and surface an error toast instead of a false-positive success when it fails.
+
+**DoD:** unit test in `tests/templates.test.mjs` covering: a valid template imports normally (unchanged); `{}` or an unrelated JSON shape is rejected with an error toast, not a silent empty template.
+
+**7.7 — Dependency/dead-code cleanup**
+
+- Remove the unused `material-symbols` package from `package.json` (only `@material-symbols/svg-400` is actually used, and only indirectly — SVGs already copied into `src/meetings/ui/icons.tsx`).
+- Move `shadcn` from `dependencies` to `devDependencies` (it's a codegen CLI, not a runtime import).
+- Remove `waitForElementByStyle` (`extension/content-scripts/common-utils.js`) — defined, never called.
+
+**DoD:** `npm run build` and `npm test` both still pass after removal; `grep -r "material-symbols[^/]" src/ extension/` (excluding the `/svg-400` sub-package) returns nothing.
+
+**Deliberately out of scope for this phase** (flagged, not built — larger, separate efforts): reducing the ~80%-duplicated content-script skeleton across google-meet/teams/zoom into a shared orchestration function; adding any DOM-selector fallback/resilience strategy for Google Meet's hardcoded obfuscated class names; broader automated test coverage for `content-scripts/` (beyond 7.1's one new race-condition test). These are real, but each is its own multi-day investigation-plus-implementation effort, not a hardening pass.
 
 ## 7. Target file structure
 

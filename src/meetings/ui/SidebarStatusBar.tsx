@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react"
 import { getLocal, getSync, onStorageChanged } from "@/lib/chrome-storage"
 import { sendMessage } from "@/lib/messaging"
-import { isAnyExportConfigured } from "@/lib/export-status"
 import { cn } from "@/lib/utils"
 import { useLiveCaptureState } from "../use-live-capture-state"
+import type { ActiveView } from "../use-active-view"
 import { PlayArrowFillIcon, CheckCircleFillIcon, CircleFillIcon } from "./icons"
 
 const PLATFORMS: { platform: Platform; label: string }[] = [
@@ -13,11 +13,17 @@ const PLATFORMS: { platform: Platform; label: string }[] = [
 ]
 
 interface SidebarStatusBarProps {
-    // Whether the main "Auto-capture meetings" toggle (App.tsx's SidebarHeader switch) is
-    // on — drives the record-dot's color below: red/armed when on, dim when off. Owned by
-    // App.tsx (backed by the "autoCaptureEnabled" sync setting), not re-read here, so
-    // there's exactly one source of truth for it.
-    autoCaptureEnabled: boolean
+    // Drives the record-dot's color below — orange (auto), white (manual), dim (off) —
+    // and its label. Same "operationMode" sync setting the popup/Settings page's capture
+    // mode radio group reads and writes (see App.tsx, which owns the state and its
+    // onStorageChanged listener; not re-read here, so there's exactly one source of truth).
+    operationMode: OperationMode
+    // Drives the Apps/AI/Storage rows below — each jumps to the Integrations page, AI and
+    // Storage deep-linking straight to their row's detail panel (see
+    // IntegrationsView.tsx's `initialSelectedId` prop / use-active-view.ts's optional hash
+    // param). Passed down from App.tsx's own `setActiveView` rather than this component
+    // calling useActiveView() itself, so there's exactly one hash-reading hook instance.
+    onNavigate: (view: ActiveView, param?: string) => void
 }
 
 // The sidebar's black "recording bar": a live capture indicator (record-dot, real —
@@ -26,11 +32,11 @@ interface SidebarStatusBarProps {
 // The play icon is rendered per the design but deliberately non-functional this pass —
 // wiring a remote manual-capture-start into extension/content-scripts/* is separate,
 // higher-risk scope (see the plan doc).
-export default function SidebarStatusBar({ autoCaptureEnabled }: SidebarStatusBarProps) {
+export default function SidebarStatusBar({ operationMode, onNavigate }: SidebarStatusBarProps) {
     const { isCapturing, isProcessing } = useLiveCaptureState()
     const [platformEnabled, setPlatformEnabled] = useState<Partial<Record<Platform, boolean>>>({})
     const [activeModelId, setActiveModelId] = useState<string | null>(null)
-    const [exportConfigured, setExportConfigured] = useState(false)
+    const [obsidianConfigured, setObsidianConfigured] = useState(false)
 
     useEffect(() => {
         function loadPlatforms() {
@@ -67,19 +73,12 @@ export default function SidebarStatusBar({ autoCaptureEnabled }: SidebarStatusBa
     }, [])
 
     useEffect(() => {
-        function loadExportStatus() {
-            getSync<ResultSync>(["obsidianVaultName", "autoPostWebhookAfterMeeting", "autoDownloadFileAfterMeeting"]).then(
-                (settings) => setExportConfigured(isAnyExportConfigured(settings)),
-            )
+        function loadObsidianStatus() {
+            getSync<ResultSync>(["obsidianVaultName"]).then((result) => setObsidianConfigured(!!result.obsidianVaultName))
         }
-        loadExportStatus()
+        loadObsidianStatus()
         return onStorageChanged((changes, area) => {
-            if (
-                area === "sync" &&
-                (changes.obsidianVaultName || changes.autoPostWebhookAfterMeeting || changes.autoDownloadFileAfterMeeting)
-            ) {
-                loadExportStatus()
-            }
+            if (area === "sync" && changes.obsidianVaultName) loadObsidianStatus()
         })
     }, [])
 
@@ -88,20 +87,29 @@ export default function SidebarStatusBar({ autoCaptureEnabled }: SidebarStatusBa
             <div className="flex h-16 items-center px-4">
                 <CircleFillIcon
                     aria-label={
-                        !autoCaptureEnabled
-                            ? "Auto-capture is off"
+                        operationMode === "off"
+                            ? "Capture is off"
                             : isCapturing
                                 ? "Capturing a meeting"
                                 : isProcessing
                                     ? "Processing…"
-                                    : "Auto-capture is on"
+                                    : operationMode === "manual"
+                                        ? "Manual capture"
+                                        : "Auto capture"
                     }
-                    className={cn("size-4 shrink-0", autoCaptureEnabled ? "text-meetings-accent" : "text-white/38")}
+                    className={cn(
+                        "size-4 shrink-0",
+                        operationMode === "off" ? "text-white/38" : operationMode === "manual" ? "text-white" : "text-meetings-accent",
+                    )}
                 />
                 <PlayArrowFillIcon className="size-6 shrink-0 text-white/38" />
             </div>
             <div className="flex h-16 items-center">
-                <div className="flex flex-1 flex-col justify-center gap-1 px-4">
+                <button
+                    type="button"
+                    onClick={() => onNavigate("integrations")}
+                    className="flex flex-1 flex-col justify-center gap-1 px-4 text-left transition-colors hover:bg-white/5"
+                >
                     <span className="font-meetings-mono text-[10px] tracking-wide text-white/38 uppercase">Apps</span>
                     <div className="flex items-center gap-1">
                         {PLATFORMS.map((p) => (
@@ -116,8 +124,12 @@ export default function SidebarStatusBar({ autoCaptureEnabled }: SidebarStatusBa
                             </span>
                         ))}
                     </div>
-                </div>
-                <div className="flex min-w-0 flex-1 flex-col justify-center gap-1 px-4">
+                </button>
+                <button
+                    type="button"
+                    onClick={() => onNavigate("integrations", "ai")}
+                    className="flex min-w-0 flex-1 flex-col justify-center gap-1 px-4 text-left transition-colors hover:bg-white/5"
+                >
                     <span className="font-meetings-mono text-[10px] tracking-wide text-white/38 uppercase">AI</span>
                     <div
                         className={cn(
@@ -125,19 +137,28 @@ export default function SidebarStatusBar({ autoCaptureEnabled }: SidebarStatusBa
                             activeModelId ? "border-meetings-accent" : "border-white/38",
                         )}
                     >
-                        <span className="font-meetings-heading min-w-0 flex-1 truncate text-[10px] text-white">
-                            {activeModelId || "No model"}
+                        <span
+                            className={cn(
+                                "font-meetings-heading min-w-0 flex-1 truncate text-[10px]",
+                                activeModelId ? "text-white" : "text-white/38",
+                            )}
+                        >
+                            {activeModelId || "NOT SET"}
                         </span>
                     </div>
-                </div>
-                <div className="flex flex-1 flex-col justify-center gap-1 px-4">
+                </button>
+                <button
+                    type="button"
+                    onClick={() => onNavigate("integrations", "obsidian")}
+                    className="flex flex-1 flex-col justify-center gap-1 px-4 text-left transition-colors hover:bg-white/5"
+                >
                     <span className="font-meetings-mono text-[10px] tracking-wide text-white/38 uppercase">Storage</span>
-                    {exportConfigured ? (
+                    {obsidianConfigured ? (
                         <CheckCircleFillIcon className="size-5 text-white" />
                     ) : (
                         <span className="font-meetings-heading text-[10px] text-white/38">NOT SET</span>
                     )}
-                </div>
+                </button>
             </div>
         </div>
     )

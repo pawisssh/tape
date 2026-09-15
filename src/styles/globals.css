@@ -27,7 +27,6 @@
     --color-meetings-ink-faint: var(--meetings-ink-faint);
     --color-meetings-border: var(--meetings-border);
     --color-meetings-chip: var(--meetings-chip);
-    --color-meetings-chip-neutral: var(--meetings-chip-neutral);
     --color-meetings-surface: var(--meetings-surface);
     --color-meetings-card: var(--meetings-card);
     --color-sidebar-ring: var(--sidebar-ring);
@@ -180,7 +179,6 @@
     --meetings-ink-faint: rgba(0, 0, 0, 0.38);
     --meetings-border: rgba(0, 0, 0, 0.12);
     --meetings-chip: rgba(0, 0, 0, 0.08);
-    --meetings-chip-neutral: #d9d9d9;
     --meetings-surface: #f6f6f6;
     --meetings-card: #ffffff;
 }
@@ -193,7 +191,6 @@
     --meetings-ink-faint: rgba(255, 255, 255, 0.38);
     --meetings-border: rgba(255, 255, 255, 0.12);
     --meetings-chip: rgba(255, 255, 255, 0.08);
-    --meetings-chip-neutral: #3a3a3c;
     --meetings-surface: #1c1c1e;
     --meetings-card: #2c2c2e;
 }

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { Switch } from "@/components/ui/switch"
 import { getSync, setSync, onStorageChanged } from "@/lib/chrome-storage"
 import { endpointOriginPattern, requestPermissions } from "@/lib/permissions"
@@ -7,11 +7,11 @@ import { cn } from "@/lib/utils"
 import MasterDetailLayout from "../components/MasterDetailLayout"
 import MobileBackButton from "../components/MobileBackButton"
 import ObsidianSection from "../ObsidianSection"
-import WebhookSection from "../WebhookSection"
-import ProviderPanel from "../connectors/ProviderPanel"
+import WebhookSection, { type WebhookSectionHandle } from "../WebhookSection"
+import ProviderPanel, { type ProviderPanelHandle } from "../connectors/ProviderPanel"
 import AiModelRows from "../connectors/AiModelRows"
 import { GoogleMeetIcon, TeamsIcon, ZoomIcon, ObsidianIcon } from "../connectors/brand-icons"
-import { KeyboardArrowRightIcon, DnsIcon, WebhookIcon } from "../ui/icons"
+import { KeyboardArrowRightIcon, DnsIcon, WebhookIcon, LinkIcon } from "../ui/icons"
 import { usePlatformToggle } from "@/lib/use-platform-toggle"
 // Framework-free logic module, imported directly rather than duplicated into src/ — see
 // PLAN.md §6 Phase 5 "Structural rule to preserve". getProviders/getActiveModel/
@@ -68,11 +68,39 @@ function ListRow({
     )
 }
 
+// Header-row action button — same solid-pill treatment as Templates' "Add template"
+// button (the app's one existing icon+label header button), reused here since there's
+// no lighter-weight precedent already in this page's header to match instead.
+function HeaderConnectButton({ connecting, disabled, onClick }: { connecting: boolean; disabled: boolean; onClick: () => void }) {
+    return (
+        <button
+            type="button"
+            disabled={disabled}
+            onClick={onClick}
+            className="flex h-9 shrink-0 items-center gap-2 rounded-full bg-meetings-ink pr-4 pl-2 text-sm font-medium text-meetings-surface shadow-[0px_16px_16px_rgba(12,12,13,0.1),0px_4px_2px_rgba(12,12,13,0.05)] transition-opacity hover:opacity-90 disabled:pointer-events-none disabled:opacity-50"
+        >
+            <LinkIcon className="size-4" /> {connecting ? "Connecting…" : "Connect"}
+        </button>
+    )
+}
+
 // List (content) + detail panel, same shape as every other page (see
 // MasterDetailLayout.tsx). Platform toggles are directly actionable in their own row (no
 // detail view); Obsidian/Webhook/AI provider slots are selectable rows whose settings
 // render in the detail panel — no more modals on this page.
-export default function IntegrationsView() {
+interface IntegrationsViewProps {
+    // Deep-links straight to a specific row's detail panel — see SidebarStatusBar.tsx's
+    // Apps/AI/Storage rows, threaded through App.tsx from the "#integrations/<id>" hash
+    // (use-active-view.ts). Anything other than a real SelectableId is ignored, so a plain
+    // "#integrations" (no row) or a stale/foreign value just leaves selection untouched.
+    initialSelectedId?: string | null
+}
+
+function isSelectableId(value: string | null | undefined): value is SelectableId {
+    return value === "obsidian" || value === "webhook" || value === "ai"
+}
+
+export default function IntegrationsView({ initialSelectedId }: IntegrationsViewProps) {
     const googleMeet = usePlatformToggle("google_meet")
     const teams = usePlatformToggle("teams")
     const zoom = usePlatformToggle("zoom")
@@ -81,13 +109,34 @@ export default function IntegrationsView() {
     const [webhookConnected, setWebhookConnected] = useState(false)
     const [providers, setProviders] = useState<LlmProviderConfig[]>([])
     const [activeModel, setActiveModelState] = useState<ObsidianLlmActiveModel | null>(null)
-    const [selectedId, setSelectedId] = useState<SelectableId | null>(null)
+    const [selectedId, setSelectedId] = useState<SelectableId | null>(
+        isSelectableId(initialSelectedId) ? initialSelectedId : null,
+    )
     const [mobileDetailOpen, setMobileDetailOpen] = useState(false)
+
+    // Connect buttons for Webhook/AI now live in this page's header (matching the
+    // Templates/Meetings header pattern) rather than inside each panel's own body — the
+    // panels still own the actual connect logic and expose it via ref + these mirrored
+    // "is it connecting / can it connect" states. See WebhookSection.tsx/ProviderPanel.tsx.
+    const webhookRef = useRef<WebhookSectionHandle>(null)
+    const [webhookConnecting, setWebhookConnecting] = useState(false)
+    const [webhookCanConnect, setWebhookCanConnect] = useState(false)
+    const providerRef = useRef<ProviderPanelHandle>(null)
+    const [aiConnecting, setAiConnecting] = useState(false)
 
     function selectRow(id: SelectableId) {
         setSelectedId(id)
         setMobileDetailOpen(true)
     }
+
+    // Re-selects whenever the caller's deep-link target changes — not just on mount —
+    // since this component doesn't remount when the sidebar sends a new "#integrations/*"
+    // hash while the user is already on this page (activeView stays "integrations", only
+    // viewParam changes).
+    useEffect(() => {
+        if (isSelectableId(initialSelectedId)) selectRow(initialSelectedId)
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [initialSelectedId])
 
     useEffect(() => {
         function loadStatus() {
@@ -181,12 +230,12 @@ export default function IntegrationsView() {
                         </div>
                         <div className="flex h-16 items-center gap-3 px-4">
                             <TeamsIcon className="size-5 shrink-0" />
-                            <span className="min-w-0 flex-1 truncate text-sm font-medium text-meetings-ink">Teams</span>
+                            <span className="min-w-0 flex-1 truncate text-sm font-medium text-meetings-ink">Teams (beta)</span>
                             <Switch checked={teams.checked} disabled={teams.pending} onCheckedChange={teams.toggle} />
                         </div>
                         <div className="flex h-16 items-center gap-3 px-4">
                             <ZoomIcon className="size-5 shrink-0" />
-                            <span className="min-w-0 flex-1 truncate text-sm font-medium text-meetings-ink">Zoom</span>
+                            <span className="min-w-0 flex-1 truncate text-sm font-medium text-meetings-ink">Zoom (beta)</span>
                             <Switch checked={zoom.checked} disabled={zoom.pending} onCheckedChange={zoom.toggle} />
                         </div>
 
@@ -230,12 +279,22 @@ export default function IntegrationsView() {
                 ) : selectedId === "webhook" ? (
                     <>
                         <MobileBackButton onClick={() => setMobileDetailOpen(false)} />
-                        <h2 className="font-meetings-heading text-xl text-meetings-ink">Webhook</h2>
+                        <h2 className="font-meetings-heading flex-1 text-xl text-meetings-ink">Webhook</h2>
+                        <HeaderConnectButton
+                            connecting={webhookConnecting}
+                            disabled={webhookConnecting || !webhookCanConnect}
+                            onClick={() => webhookRef.current?.connect()}
+                        />
                     </>
                 ) : selectedId === "ai" ? (
                     <>
                         <MobileBackButton onClick={() => setMobileDetailOpen(false)} />
-                        <h2 className="font-meetings-heading text-xl text-meetings-ink">{AI_SLOT.name}</h2>
+                        <h2 className="font-meetings-heading flex-1 text-xl text-meetings-ink">{AI_SLOT.name}</h2>
+                        <HeaderConnectButton
+                            connecting={aiConnecting}
+                            disabled={aiConnecting}
+                            onClick={() => providerRef.current?.connect()}
+                        />
                     </>
                 ) : null
             }
@@ -248,17 +307,23 @@ export default function IntegrationsView() {
                 ) : selectedId === "webhook" ? (
                     <div className="px-4">
                         <p className="pt-4 pb-2 text-sm text-meetings-ink-muted">Post transcripts to any tool that accepts webhooks.</p>
-                        <WebhookSection />
+                        <WebhookSection
+                            ref={webhookRef}
+                            onConnectingChange={setWebhookConnecting}
+                            onCanConnectChange={setWebhookCanConnect}
+                        />
                     </div>
                 ) : selectedId === "ai" ? (
                     <div className="px-4">
                         <p className="pt-4 pb-2 text-sm text-meetings-ink-muted">{AI_SLOT.description}</p>
                         <ProviderPanel
                             key={AI_SLOT.id}
+                            ref={providerRef}
                             provider={aiProvider}
                             allowedTypes={AI_SLOT.allowedTypes}
                             onSaved={handleProviderSaved}
                             onDeleted={handleProviderDeleted}
+                            onConnectingChange={setAiConnecting}
                         />
                     </div>
                 ) : (

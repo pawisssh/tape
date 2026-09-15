@@ -35,10 +35,7 @@
  * @typedef {boolean} AutoDownloadFileAfterMeeting Whether to automatically download the transcript file after each meeting
  */
 /**
- * @typedef {"auto" | "manual"} OperationMode mode of the extension which decides whether to automatically capture transcripts or let the user decide per meeting basis
- */
-/**
- * @typedef {boolean} AutoCaptureEnabled Master on/off switch for meeting detection/auto-join across all platforms, surfaced as the toggle next to the logo in the Meetings page sidebar (added in the visual redesign). Separate from per-platform enablement (wantGoogleMeet/wantTeams/wantZoom) and from OperationMode (which only controls whether captions auto-toggle *within* an already-detected meeting). Defaults to true.
+ * @typedef {"auto" | "manual" | "off"} OperationMode mode of the extension which decides whether to automatically capture transcripts, let the user decide per meeting basis, or not capture at all. Checked once at meeting-join time in each platform's content script (google-meet/teams/zoom index.js) — "off" skips starting capture routines entirely for that meeting. Also the single source of truth for the Meetings page sidebar's record-dot color/on-off switch (see SidebarStatusBar.tsx/App.tsx), replacing the former separate, purely-cosmetic AutoCaptureEnabled setting.
  */
 /**
  * @typedef {boolean} HideCaptions hide the captions on the UI by changing height and opacity
@@ -76,6 +73,15 @@
  * @property {string} personName name of the person who sent the message
  * @property {string} timestamp ISO timestamp of when the message was sent
  * @property {string} chatMessageText actual message text
+ */
+
+/**
+ * @typedef {Object} CommentNoteEntry A quick note the user typed during the meeting via the
+ * floating widget's note panel (see extension/content-scripts/common-utils.js's renderFab()).
+ * Merged into the finalized meeting's userNotes at meeting end — see
+ * formatCommentNotesAsUserNotes() in extension/background-script/utils.js.
+ * @property {string} timestamp ISO timestamp of when the note was saved
+ * @property {string} text the note text
  */
 
 /**
@@ -128,6 +134,7 @@
  * @property {string} userName
  * @property {TranscriptBlock[]} transcript array containing transcript blocks from the meeting
  * @property {ChatMessage[]} chatMessages array containing chat messages from the meeting
+ * @property {CommentNoteEntry[]} liveCommentNotes quick notes typed via the floating widget's note panel during the meeting
  * @property {StateTranscriptBlock} stateTranscriptBlock buffer variables to dump values, which get pushed to transcript array as transcript blocks, at defined conditions
  * @property {string} meetingStartTimestamp ISO timestamp of when the most recent meeting started
  * @property {string} meetingTitle title of the most recent meeting
@@ -143,11 +150,10 @@
  */
 /**
  * @typedef {Object} ExtensionMessage Message sent by the calling script
- * @property {"new_meeting_started" | "meeting_ended" | "download_transcript_at_index" | "post_webhook_at_index" | "recover_last_meeting" | "get_platform_enablement_status" | "get_platform_permission_status" | "enable_platform" | "disable_platform" | "open_popup" | "open_side_panel" | "broadcast_live_buffer" | "summarize_meeting_now"} type type of message
+ * @property {"new_meeting_started" | "meeting_ended" | "download_transcript_at_index" | "post_webhook_at_index" | "recover_last_meeting" | "get_platform_enablement_status" | "get_platform_permission_status" | "enable_platform" | "disable_platform" | "open_popup" | "open_side_panel" | "broadcast_live_buffer"} type type of message
  * @property {number} [index] index of the meeting to process
  * @property {Platform | Platform[]} [platform] index of the meeting to process
  * @property {StateTranscriptBlock} [stateTranscriptBlock]
- * @property {string} [meetingId] stable id (see obsidian/store.js getMeetingId) of the meeting to act on — used by "summarize_meeting_now" (a direct Save-to-Obsidian message existed here through Phase 3/5, removed once Run started calling extension/obsidian/save-flow.js in place instead of messaging the background script)
 */
 
 /**
@@ -176,6 +182,7 @@
  * @property {MeetingStartTimestamp} meetingStartTimestamp
  * @property {Transcript} transcript
  * @property {ChatMessages} chatMessages
+ * @property {CommentNoteEntry[] | undefined} liveCommentNotes quick notes typed via the floating widget's note panel during the current meeting, dumped by content script
  * @property {IsDeferredUpdatedAvailable | undefined} isDeferredUpdatedAvailable
  * @property {Meeting[] | undefined} meetings
  * @property {LlmProviderConfig[] | undefined} obsidianLlmProviders saved LLM connectors (see extension/obsidian/providers.js) — local, not sync, since apiKey is a secret
@@ -188,7 +195,6 @@
  * @property {AutoPostWebhookAfterMeeting} autoPostWebhookAfterMeeting
  * @property {AutoDownloadFileAfterMeeting} autoDownloadFileAfterMeeting
  * @property {OperationMode} operationMode
- * @property {AutoCaptureEnabled | undefined} autoCaptureEnabled added in the visual redesign
  * @property {HideCaptions} hideCaptions
  * @property {WebhookBodyType} webhookBodyType
  * @property {WebhookUrl} webhookUrl
@@ -203,6 +209,8 @@
  * @property {ObsidianLlmAutoRun | undefined} obsidianLlmAutoRun
  * @property {SummaryTemplate[] | undefined} obsidianLlmSummaryTemplates
  * @property {ObsidianLlmSystemPrompt | undefined} obsidianLlmSystemPrompt
+ * @property {DictionaryCategory[] | undefined} obsidianDictionaryCategories
+ * @property {DictionaryEntry[] | undefined} obsidianDictionaryWords
 */
 
 

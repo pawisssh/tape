@@ -28,7 +28,12 @@ export default defineManifest({
     version: "3.4.2",
     description: "Simple Google Meet transcripts. Private and open source.",
     action: {
-        default_icon: "extension/icon.png",
+        // Toolbar button / puzzle-piece extensions-dropdown icon — deliberately a
+        // separate file from `icons` below (the Details-page/Web-Store icon), since a
+        // detailed icon that reads well at 128px often turns into a blob at the ~16-19px
+        // toolbar size. Replace extension/icon-toolbar.png with a simplified icon
+        // designed to be legible that small.
+        default_icon: "extension/icon-toolbar.png",
         default_popup: "src/popup/index.html",
     },
     side_panel: {
@@ -70,4 +75,28 @@ export default defineManifest({
             },
         ],
     },
+    // Lets the recording toast/FAB content scripts (extension/content-scripts/**) load
+    // extension/icon.png and the FAB's segment icons as an <img src> inside the host
+    // meeting page — that subresource load is attributed to the host page's own origin
+    // under MV3, even though the code inserting it runs at extension privilege.
+    web_accessible_resources: [
+        {
+            resources: [
+                "extension/icon.png",
+                "extension/fab-brand-mark.svg",
+                "extension/fab-brand-mark-inactive.svg",
+                "extension/fab-recording-icon.svg",
+                "extension/fab-play-icon.svg",
+                "extension/fab-note-icon.svg",
+                "extension/fab-menu-icon.svg",
+            ],
+            matches: [
+                "https://meet.google.com/*",
+                "https://teams.live.com/*",
+                "https://teams.microsoft.com/*",
+                "https://teams.cloud.microsoft/*",
+                "https://*.zoom.us/*",
+            ],
+        },
+    ],
 })

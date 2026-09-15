@@ -18,9 +18,17 @@ import {
 import { asErrorObject, sendMessage } from "@/lib/messaging"
 import { writeTextWithFallback } from "@/lib/clipboard"
 import { getTranscriptString, getChatMessagesString } from "../../../extension/background-script/utils.js"
+// Framework-free logic module, imported directly — never duplicated into src/, same
+// pattern MeetingDetail.tsx already uses for save-flow.js's runSaveToObsidianFlow. Called
+// directly (not via chrome.runtime.sendMessage to the background service worker) because
+// Chrome kills any single in-flight network request from a service worker after 5
+// minutes regardless of the configured obsidianLlmTimeoutMs — see summarize-now.js's own
+// header comment for the full rationale.
+import { summarizeNow } from "../../../extension/obsidian/summarize-now.js"
 import CircleIconButton from "../ui/CircleIconButton"
 import { ContentCopyIcon, DownloadIcon, MoreHorizIcon, WebhookIcon, DeleteIcon } from "../ui/icons"
 import FollowUpTemplatePicker from "./FollowUpTemplatePicker"
+import ContextExceededDialog from "./ContextExceededDialog"
 
 interface MeetingDetailToolbarProps {
     meeting: Meeting
@@ -32,6 +40,11 @@ interface MeetingDetailToolbarProps {
     // meeting id — see MeetingDetail.tsx's own doc comment on this same prop pair.
     operation: MeetingOperation | null
     onOperationChange: (operation: MeetingOperation | null) => void
+    // Registers/clears this component's own cancel function while regenerateSummary is in
+    // flight, so the sticky status bar's Stop button (rendered in MeetingDetail.tsx's
+    // DetailTabs, a sibling component) can reach it — see MeetingsView.tsx's own comment
+    // on its cancelHandlersRef.
+    onRegisterCancel: (meetingId: string, fn: (() => void) | null) => void
 }
 
 // Rendered in MeetingsView.tsx's `detailTitle` slot — MasterDetailLayout's sticky h-16
@@ -50,16 +63,23 @@ export default function MeetingDetailToolbar({
     onTemplateOverrideChange,
     operation,
     onOperationChange,
+    onRegisterCancel,
 }: MeetingDetailToolbarProps) {
     const [isPostingWebhook, setIsPostingWebhook] = useState(false)
     const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false)
+    const [contextDialog, setContextDialog] = useState<{ requiredTokens: number; loadedContextLength?: number } | null>(
+        null,
+    )
 
     // Stable id — must match extension/obsidian/store.js's getMeetingId().
     const meetingId = meeting.meetingStartTimestamp
     const busy = operation?.meetingId === meetingId
 
-    // This component remounts per-meeting (see MeetingsView.tsx's `key={...meetingId}`),
-    // but the summarize_meeting_now message isn't cancellable on unmount — see
+    // This component remounts per-meeting (see MeetingsView.tsx's `key={...meetingId}`).
+    // summarizeNow() now runs directly in this page's own context (not the background
+    // service worker), so — same as Run — closing/navigating away from this tab does stop
+    // it; this guard is for the case where the meeting is simply switched while it's still
+    // running, so a late resolution can't clobber a different meeting's state. See
     // MeetingDetail.tsx's identical guard on its Run flow for the full rationale.
     const isMountedRef = useRef(true)
     useEffect(() => {
@@ -110,15 +130,21 @@ export default function MeetingDetailToolbar({
 
     // Triggered by the Follow-up template picker (picking a different template
     // regenerates immediately — see handleTemplatePickerChange below); the single place
-    // that drives the sticky status bar and talks to the background's
-    // summarize_meeting_now handler.
+    // that drives the sticky status bar and calls summarizeNow() directly.
     async function regenerateSummary() {
+        const controller = new AbortController()
         onOperationChange({ meetingId, label: "Summarizing…" })
-        const response = await sendMessage({ type: "summarize_meeting_now", meetingId })
+        onRegisterCancel(meetingId, () => controller.abort())
+        const response = await summarizeNow(meetingId, controller.signal)
+        onRegisterCancel(meetingId, null)
         if (isMountedRef.current) onOperationChange(null)
         onChanged()
         if (response.success) {
             toast.add({ title: "Summary ready", type: "success" })
+        } else if (response.contextExceeded) {
+            if (isMountedRef.current) setContextDialog(response.contextExceeded)
+        } else if (response.stopped) {
+            toast.add({ title: "Stopped", type: "warning" })
         } else {
             toast.add({
                 title: "Could not summarize",
@@ -145,7 +171,7 @@ export default function MeetingDetailToolbar({
             <FollowUpTemplatePicker value={meeting.templateOverrideId} disabled={busy} onChange={handleTemplatePickerChange} />
 
             <div className="flex items-center gap-2">
-                <div className="flex items-center gap-0 rounded-full bg-meetings-card p-1 shadow-[0px_16px_16px_rgba(12,12,13,0.1),0px_4px_2px_rgba(12,12,13,0.05)]">
+                <div className="flex h-9 items-center gap-0 rounded-full bg-meetings-card shadow-[0px_16px_16px_rgba(12,12,13,0.1),0px_4px_2px_rgba(12,12,13,0.05)]">
                     <CircleIconButton bare label="Copy transcript" icon={<ContentCopyIcon />} onClick={handleCopyTranscript} />
                     <CircleIconButton bare label="Download transcript" icon={<DownloadIcon />} onClick={handleDownload} />
                 </div>
@@ -182,6 +208,19 @@ export default function MeetingDetailToolbar({
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
+
+            {contextDialog && (
+                <ContextExceededDialog
+                    open
+                    requiredTokens={contextDialog.requiredTokens}
+                    loadedContextLength={contextDialog.loadedContextLength}
+                    onOpenChange={(open) => !open && setContextDialog(null)}
+                    onRetry={() => {
+                        setContextDialog(null)
+                        regenerateSummary()
+                    }}
+                />
+            )}
         </div>
     )
 }

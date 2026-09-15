@@ -6,20 +6,23 @@ function showNotificationTeams(extensionStatusJSON) {
     // Banner CSS
     let html = document.querySelector("html")
     let obj = document.createElement("div")
+    let dot = document.createElement("span")
     let logo = document.createElement("img")
     let text = document.createElement("p")
 
     logo.setAttribute(
         "src",
-        "https://ejnana.github.io/transcripto-status/icon.png"
+        LOGO_URL
     )
     logo.setAttribute("height", "32px")
     logo.setAttribute("width", "32px")
-    logo.style.cssText = "border-radius: 4px"
+    logo.style.cssText = "border-radius: 8px"
     text.style.cssText = "margin-top: 1rem; margin-bottom:1rem; font-size: medium"
 
+    obj.style.cssText = `bottom: 5%; ${commonCSS}`
+    dot.style.cssText = `width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; background: ${extensionStatusJSON.status === 200 ? "#f34f16" : "orange"};`
+
     if (extensionStatusJSON.status === 200) {
-        obj.style.cssText = `color: #2A9ACA ; bottom: 5%; ${commonCSS}`
         text.innerHTML = extensionStatusJSON.message
 
         // Remove banner once transcript is on
@@ -28,7 +31,6 @@ function showNotificationTeams(extensionStatusJSON) {
         })
     }
     else {
-        obj.style.cssText = `color: orange ; bottom: 5%; ${commonCSS}`
         text.innerHTML = extensionStatusJSON.message
 
         setTimeout(() => {
@@ -38,6 +40,7 @@ function showNotificationTeams(extensionStatusJSON) {
 
     obj.prepend(text)
     obj.prepend(logo)
+    obj.prepend(dot)
     if (html)
         html.append(obj)
 }

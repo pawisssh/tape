@@ -33,6 +33,68 @@ export function getTranscriptString(transcript) {
 }
 
 /**
+ * Formats the live comment notes captured mid-meeting from the floating widget's note
+ * panel (see extension/content-scripts/common-utils.js's renderFab()) into the same plain
+ * text shape as Meeting.userNotes, one timestamp header + text per note, so the result can
+ * be dropped straight into a fresh meeting's userNotes with no further transformation (see
+ * pickupLastMeetingFromStorage() in meetings.js). Pure — never mutates `liveCommentNotes`.
+ * @param {CommentNoteEntry[] | undefined} liveCommentNotes
+ */
+export function formatCommentNotesAsUserNotes(liveCommentNotes) {
+    let notesString = ""
+    if (liveCommentNotes && liveCommentNotes.length > 0) {
+        liveCommentNotes.forEach(note => {
+            notesString += `${new Date(note.timestamp).toLocaleString("default", TIMEFORMAT).toUpperCase()}\n`
+            notesString += note.text
+            notesString += "\n\n"
+        })
+    }
+    return notesString
+}
+
+/**
+ * Escapes regex-special characters so a word can be matched literally.
+ * @param {string} text
+ */
+function escapeRegExp(text) {
+    return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+}
+
+/**
+ * Runs a user's Dictionary (extension/obsidian/dictionary.js) over a transcript, fixing
+ * commonly mis-transcribed words/names/jargon before the meeting is finalized (see
+ * pickupLastMeetingFromStorage() in meetings.js, the single choke point where this is
+ * called so storage/webhook/download/LLM/Obsidian markdown all see the corrected text).
+ * Pure — returns a new array, never mutates `transcript` or its blocks. Entries with no
+ * (or blank) `replacement` are skipped entirely, since they're reference-only. Matching is
+ * case-insensitive and whole-word, defined as "not adjacent to an alphanumeric character"
+ * (rather than regex `\b`, which misfires on words ending in punctuation, e.g. "C++" —
+ * `\b` needs a word/non-word transition, and two non-word characters in a row never
+ * produce one). This only correctly segments space/punctuation-delimited scripts (Latin,
+ * Cyrillic, etc.) — scriptio-continua languages (e.g. Thai, Chinese) aren't handled and
+ * are out of scope here.
+ * @param {TranscriptBlock[]} transcript
+ * @param {DictionaryEntry[]} words
+ * @returns {TranscriptBlock[]}
+ */
+export function applyDictionaryReplacements(transcript, words) {
+    const rules = (words || [])
+        .filter((w) => w.word && w.word.trim() && w.replacement && w.replacement.trim())
+        .map((w) => ({
+            pattern: new RegExp(`(?<![A-Za-z0-9])${escapeRegExp(w.word.trim())}(?![A-Za-z0-9])`, "gi"),
+            replacement: w.replacement.trim(),
+        }))
+
+    return transcript.map((block) => {
+        let transcriptText = block.transcriptText
+        for (const rule of rules) {
+            transcriptText = transcriptText.replace(rule.pattern, rule.replacement)
+        }
+        return { ...block, transcriptText }
+    })
+}
+
+/**
  * Format chat messages into string
  * @param {ChatMessage[] | []} chatMessages
  */

@@ -11,6 +11,7 @@ import MeetingDetail from "../agenda/MeetingDetail"
 import MeetingDetailToolbar from "../agenda/MeetingDetailToolbar"
 import { groupMeetingsByDay } from "../agenda/group-by-day"
 import { toggleActionItemDone } from "../summary/parse-summary-markdown"
+import { parseGoogleMeetTranscript } from "../import/parse-google-meet-transcript"
 
 export default function MeetingsView() {
     const [meetings, setMeetings] = useState<Meeting[]>([])
@@ -51,6 +52,27 @@ export default function MeetingsView() {
         } else {
             removeLocal("activeMeetingOperation")
         }
+    }
+
+    // How the sticky status bar's Stop button actually cancels the in-flight LLM request
+    // (see extension/obsidian/llm.js's `signal` param) — necessarily separate from
+    // `operation` above, since that's persisted through chrome.storage.local (JSON-only,
+    // can't hold a function) and survives across this whole page's own remounts. Keyed by
+    // meeting id, not a single slot, so switching meetings while an old, abandoned
+    // operation is still quietly running in the background (see MeetingDetail.tsx's own
+    // comment on that) can never cancel the *wrong* meeting's operation.
+    const cancelHandlersRef = useRef<Map<string, () => void>>(new Map())
+
+    function registerCancel(meetingId: string, fn: (() => void) | null) {
+        if (fn) {
+            cancelHandlersRef.current.set(meetingId, fn)
+        } else {
+            cancelHandlersRef.current.delete(meetingId)
+        }
+    }
+
+    function cancelOperation(meetingId: string) {
+        cancelHandlersRef.current.get(meetingId)?.()
     }
 
     const importFileInputRef = useRef<HTMLInputElement>(null)
@@ -149,12 +171,18 @@ export default function MeetingsView() {
             }
 
             const now = new Date().toISOString()
+            const parsedTranscript = parseGoogleMeetTranscript(fileText)
+            const transcript: TranscriptBlock[] =
+                parsedTranscript.length > 0
+                    ? parsedTranscript
+                    : [{ personName: "Imported transcript", timestamp: now, transcriptText: fileText }]
+
             const newMeeting: Meeting = {
                 meetingSoftware: "",
                 meetingTitle: file.name.replace(/\.txt$/i, ""),
-                meetingStartTimestamp: now,
-                meetingEndTimestamp: now,
-                transcript: [{ personName: "Imported transcript", timestamp: now, transcriptText: fileText }],
+                meetingStartTimestamp: transcript[0].timestamp,
+                meetingEndTimestamp: transcript[transcript.length - 1].timestamp,
+                transcript,
                 chatMessages: [],
                 webhookPostStatus: "new",
             }
@@ -260,6 +288,7 @@ export default function MeetingsView() {
                             }
                             operation={operation}
                             onOperationChange={setOperation}
+                            onRegisterCancel={registerCancel}
                         />
                     </>
                 ) : null
@@ -274,6 +303,8 @@ export default function MeetingsView() {
                         onToggleActionItem={(itemIndex) => handleActionItemToggled(selectedEntry.index, itemIndex)}
                         operation={operation}
                         onOperationChange={setOperation}
+                        onRegisterCancel={registerCancel}
+                        onCancelOperation={cancelOperation}
                     />
                 ) : (
                     <p className="text-muted-foreground px-4 text-sm">Select a meeting to see its details.</p>

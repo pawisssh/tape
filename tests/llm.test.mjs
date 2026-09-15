@@ -4,9 +4,11 @@ import {
     extractJsonFromResponse,
     endpointOriginPattern,
     estimateTokenCount,
+    suggestedContextWindow,
     DEFAULT_LLM_TIMEOUT_MS,
     enrichWithLlm,
 } from "../extension/obsidian/llm.js"
+import { buildInterpreterUserPrompt, collectInstructions } from "../extension/obsidian/interpreter.js"
 
 function makeMeeting(overrides) {
     return {
@@ -141,7 +143,7 @@ describe("estimateTokenCount", () => {
 
 describe("defaults", () => {
     test("documented default timeout", () => {
-        assert.equal(DEFAULT_LLM_TIMEOUT_MS, 300000)
+        assert.equal(DEFAULT_LLM_TIMEOUT_MS, 600000)
     })
 })
 
@@ -227,4 +229,174 @@ describe("enrichWithLlm - templateOverrideId resolution", () => {
     // this describe block's deliberately variable-only fixtures) and would need a live/
     // mocked LLM endpoint; see tests/templates.test.mjs's own "resolveDefaultTemplate"
     // describe block for that branch in isolation.
+})
+
+describe("enrichWithLlm - context ceiling detection", () => {
+    // Unlike the describe block above, this one needs a template with a real AI
+    // instruction so enrichWithLlm actually reaches the network (an all-variables
+    // template skips it entirely — see enrichWithLlm's own doc comment), and mocks
+    // globalThis.fetch to stand in for both LM Studio's GET /api/v0/models/{model}
+    // (model info) and POST .../chat/completions (the actual summarization request).
+    const instructionTemplate = {
+        id: "with-instruction",
+        name: "With instruction",
+        keywords: "",
+        properties: [],
+        noteContent: '{{"a one-sentence summary"}}',
+    }
+    const baseSettings = {
+        obsidianUseLlm: true,
+        obsidianLlmEndpoint: "http://localhost:1234/v1/chat/completions",
+        obsidianLlmModel: "test-model",
+        obsidianLlmSystemPrompt: "You are a helpful assistant.",
+        obsidianLlmSummaryTemplates: [instructionTemplate],
+    }
+    // Long enough that estimateTokenCount() (~4 chars/token) clears every small ceiling
+    // used below (50 tokens ~= 200 chars).
+    const longMeeting = makeMeeting({
+        transcript: [{ personName: "A", timestamp: "2024-01-01T09:00:00.000Z", transcriptText: "word ".repeat(2000) }],
+    })
+
+    /** @param {(url: string) => any} handler */
+    function withMockedFetch(handler, fn) {
+        const originalFetch = globalThis.fetch
+        globalThis.fetch = async (url) => handler(String(url))
+        return fn().finally(() => {
+            globalThis.fetch = originalFetch
+        })
+    }
+
+    test("model already loaded: contextExceeded fires using loaded_context_length", () =>
+        withMockedFetch(
+            (url) => {
+                assert.ok(url.includes("/api/v0/models/test-model"))
+                return { ok: true, json: async () => ({ state: "loaded", loaded_context_length: 50, max_context_length: 32768 }) }
+            },
+            async () => {
+                const result = await enrichWithLlm(longMeeting, baseSettings)
+                assert.ok(result && "contextExceeded" in result && result.contextExceeded)
+                assert.equal(result.loadedContextLength, 50)
+            },
+        ))
+
+    test("model not yet loaded: falls back to max_context_length so contextExceeded still fires", () =>
+        withMockedFetch(
+            (url) => {
+                assert.ok(url.includes("/api/v0/models/test-model"))
+                return { ok: true, json: async () => ({ state: "not-loaded", max_context_length: 50 }) }
+            },
+            async () => {
+                const result = await enrichWithLlm(longMeeting, baseSettings)
+                assert.ok(result && "contextExceeded" in result && result.contextExceeded)
+                assert.equal(result.loadedContextLength, 50)
+            },
+        ))
+
+    test("pre-flight found no ceiling, but the server itself rejects the request citing context length: contextExceeded still fires, without a numeric loadedContextLength", () =>
+        withMockedFetch(
+            (url) => {
+                if (url.includes("/api/v0/models/")) {
+                    // Pre-flight can't determine a ceiling at all (e.g. a non-LM-Studio
+                    // provider, or a model id LM Studio doesn't recognize) — this is the
+                    // scenario the fallback below exists for.
+                    return { ok: false }
+                }
+                // The real completions request — the server rejects it, and its error body
+                // is the only signal we have left that this was actually a context problem.
+                return {
+                    ok: false,
+                    status: 400,
+                    text: async () =>
+                        JSON.stringify({
+                            error: {
+                                message: "This model's maximum context length is 4096 tokens. However, you requested 5000 tokens.",
+                            },
+                        }),
+                }
+            },
+            async () => {
+                const result = await enrichWithLlm(longMeeting, baseSettings)
+                assert.ok(result && "contextExceeded" in result && result.contextExceeded)
+                assert.ok(result.requiredTokens > 0)
+                assert.equal(result.loadedContextLength, undefined)
+            },
+        ))
+
+    test("a non-2xx response unrelated to context length still resolves to plain null, not contextExceeded", () =>
+        withMockedFetch(
+            (url) => {
+                if (url.includes("/api/v0/models/")) {
+                    return { ok: false }
+                }
+                return { ok: false, status: 401, text: async () => JSON.stringify({ error: { message: "Invalid API key" } }) }
+            },
+            async () => {
+                const result = await enrichWithLlm(longMeeting, baseSettings)
+                assert.equal(result, null)
+            },
+        ))
+
+    test("model info unavailable: the check is skipped and the normal request proceeds (and fails offline, as null)", () =>
+        withMockedFetch(
+            (url) => {
+                if (url.includes("/api/v0/models/")) {
+                    return { ok: false }
+                }
+                // The completions POST this falls through to — no server actually
+                // listening in this test, so it fails too, resolving to plain null.
+                throw new Error("network disabled in test")
+            },
+            async () => {
+                const result = await enrichWithLlm(longMeeting, baseSettings)
+                assert.equal(result, null)
+            },
+        ))
+
+    test("an already-aborted external signal resolves to {stopped: true}, not null — the caller must stop the whole operation, not fall back to a plain note", () =>
+        withMockedFetch(
+            (url) => {
+                // A real fetch() called with an already-aborted signal rejects
+                // immediately without a network request — this mock never actually
+                // needs to be reached for the pre-flight GET to short-circuit, but
+                // stands in for it regardless of whether the test's fetch shim honors
+                // AbortSignal the same way.
+                assert.ok(url.includes("/api/v0/models/test-model"))
+                return { ok: true, json: async () => ({ state: "loaded", loaded_context_length: 999999 }) }
+            },
+            async () => {
+                const result = await enrichWithLlm(longMeeting, baseSettings, AbortSignal.abort())
+                assert.deepEqual(result, { stopped: true })
+            },
+        ))
+
+    test("a ceiling between the bare prompt estimate and the buffered suggestion still triggers contextExceeded — the buffer is load-bearing in the check, not just cosmetic in the dialog", () => {
+        const meeting = makeMeeting({
+            transcript: [{ personName: "A", timestamp: "2024-01-01T09:00:00.000Z", transcriptText: "word ".repeat(200) }],
+        })
+        // Compute exactly what enrichWithLlm itself will compute internally, so the test
+        // ceiling can be placed precisely between the two thresholds being distinguished.
+        const instructions = [...collectInstructions(instructionTemplate).values()]
+        const userPrompt = buildInterpreterUserPrompt(meeting, instructions)
+        const fullPromptText = baseSettings.obsidianLlmSystemPrompt + "\n" + userPrompt
+        const requiredTokens = estimateTokenCount(fullPromptText)
+        const buffered = suggestedContextWindow(requiredTokens)
+        assert.ok(buffered > requiredTokens + 10, "sanity: the buffer adds a meaningful margin for this prompt size")
+        const ceiling = requiredTokens + 10 // fits the bare prompt, but not with the buffer
+
+        return withMockedFetch(
+            (url) => {
+                assert.ok(url.includes("/api/v0/models/test-model"))
+                return { ok: true, json: async () => ({ state: "loaded", loaded_context_length: ceiling }) }
+            },
+            async () => {
+                const result = await enrichWithLlm(meeting, baseSettings)
+                assert.ok(
+                    result && "contextExceeded" in result && result.contextExceeded,
+                    "a bare (unbuffered) check would have let this through — the buffer must be what catches it",
+                )
+                assert.equal(result.requiredTokens, requiredTokens)
+                assert.equal(result.loadedContextLength, ceiling)
+            },
+        )
+    })
 })

@@ -11,6 +11,7 @@ function createContentScriptState(meetingSoftware, platform) {
         userName: "You",
         transcript: [],
         chatMessages: [],
+        liveCommentNotes: [],
         stateTranscriptBlock: {
             timestamp: "",
             mutationTargetElement: null,
@@ -83,7 +84,7 @@ function checkExtensionStatus(state) {
 /**
  * @description Overwrite state to chrome storage
  * @param {ContentScriptState} state
- * @param {Array<"meetingSoftware"  | "meetingTitle" | "meetingStartTimestamp" | "transcript" | "chatMessages">} keys
+ * @param {Array<"meetingSoftware"  | "meetingTitle" | "meetingStartTimestamp" | "transcript" | "chatMessages" | "liveCommentNotes">} keys
  * @param {boolean} sendDownloadMessage
  */
 function overWriteChromeStorage(state, keys, sendDownloadMessage) {
@@ -93,6 +94,7 @@ function overWriteChromeStorage(state, keys, sendDownloadMessage) {
     if (keys.includes("meetingStartTimestamp")) objectToSave.meetingStartTimestamp = state.meetingStartTimestamp
     if (keys.includes("transcript")) objectToSave.transcript = state.transcript
     if (keys.includes("chatMessages")) objectToSave.chatMessages = state.chatMessages
+    if (keys.includes("liveCommentNotes")) objectToSave.liveCommentNotes = state.liveCommentNotes
 
     chrome.storage.local.set(objectToSave, function () {
         if (sendDownloadMessage) {
@@ -158,29 +160,6 @@ async function waitForElement(selector, text, iframe = null) {
 }
 
 /**
- * @description Waits until an element matching the selector has the specified computed CSS property value.
- * @param {string} selector - The selector to query (e.g., 'div[role="region"]')
- * @param {string} cssProp - The camelCase or kebab-case CSS property (e.g., 'containerName')
- * @param {string} cssPropValue - The expected value of the CSS property (e.g., 'captions-history')
- */
-async function waitForElementByStyle(selector, cssProp, cssPropValue) {
-    while (true) {
-        const elements = Array.from(document.querySelectorAll(selector))
-        const matchedElement = elements.find(element => {
-            const computedStyle = window.getComputedStyle(element)
-            // Cast the string to a valid key type of CSSStyleDeclaration to satisfy the compiler
-            return computedStyle[/** @type {keyof CSSStyleDeclaration} */ (cssProp)] === cssPropValue
-        })
-
-        if (matchedElement) {
-            return matchedElement
-        }
-
-        await new Promise((resolve) => requestAnimationFrame(resolve))
-    }
-}
-
-/** 
  * @description Single, flat polling monitor that handles initial attachment and all re-attachments.
  * @param {ContentScriptState} state
  */
@@ -350,82 +329,309 @@ function pulseStatus() {
     }, 3000)
 }
 
+/** Handle for the FAB's live elapsed-timer interval, shared between renderFab() and unmountFab(). */
+let fabTimerIntervalId = null
+
+/**
+ * @description Formats elapsed seconds since `startIso` as zero-padded H:MM:SS (e.g. "0:00:23", "1:04:12").
+ * @param {string} startIso
+ */
+function formatElapsedTime(startIso) {
+    const elapsedSeconds = Math.max(0, Math.floor((Date.now() - new Date(startIso).getTime()) / 1000))
+    const h = Math.floor(elapsedSeconds / 3600)
+    const m = Math.floor((elapsedSeconds % 3600) / 60)
+    const s = elapsedSeconds % 60
+    const pad = (/** @type {number} */ n) => String(n).padStart(2, "0")
+    return `${h}:${pad(m)}:${pad(s)}`
+}
+
+/**
+ * @param {HTMLElement} fab
+ * @param {string} startIso
+ */
+function startFabTimer(fab, startIso) {
+    if (fabTimerIntervalId) clearInterval(fabTimerIntervalId)
+    const timerText = fab.querySelector("#fab-timer-text")
+    const tick = () => { if (timerText) timerText.textContent = formatElapsedTime(startIso) }
+    tick()
+    fabTimerIntervalId = setInterval(tick, 1000)
+}
+
+/**
+ * @description Toggles the FAB between its recording and not-recording looks (brand
+ * segment color/mark, timer icon, timer text opacity). When switching to not-recording,
+ * freezes/stops the live timer at 0:00:00 per the Figma "not record" state.
+ * @param {boolean} isRecording
+ */
+function setFabRecordingState(isRecording) {
+    const fab = /** @type {HTMLElement | null} */ (document.querySelector("#transcriptonic-fab"))
+    if (!fab) return
+
+    const brandSegment = /** @type {HTMLElement} */ (fab.querySelector("#fab-brand-segment"))
+    const brandMark = /** @type {HTMLImageElement} */ (fab.querySelector("#fab-brand-mark"))
+    const timerIcon = /** @type {HTMLImageElement} */ (fab.querySelector("#fab-timer-icon"))
+    const timerText = /** @type {HTMLElement} */ (fab.querySelector("#fab-timer-text"))
+
+    if (brandSegment) brandSegment.style.backgroundColor = isRecording ? "#f34f16" : "#a6a6a6"
+    if (brandMark) brandMark.src = isRecording ? FAB_BRAND_MARK_URL : FAB_BRAND_MARK_INACTIVE_URL
+    if (timerIcon) timerIcon.src = isRecording ? FAB_RECORDING_ICON_URL : FAB_PLAY_ICON_URL
+    if (timerText) timerText.style.color = isRecording ? "white" : "rgba(255,255,255,0.38)"
+
+    if (!isRecording) {
+        if (fabTimerIntervalId) {
+            clearInterval(fabTimerIntervalId)
+            fabTimerIntervalId = null
+        }
+        if (timerText) timerText.textContent = "0:00:00"
+    }
+}
+
 function renderFab() {
     const fabCss = `
         position: fixed;
         top: 50%;
         bottom: 50%;
         right: 8px;
-        height: 36px;
-        width: 36px;
-        border-radius: 36px;
+        height: 40px;
+        width: auto;
+        border-radius: 8px;
         z-index: 100;
         display: flex;
         align-items: center;
-        justify-content: center;
-        background-color: #071f29;
-        box-shadow: 0px 0px 4px 0px #2A9ACA;
-        cursor: pointer;
+        box-shadow: 0px 8px 12px rgba(0,0,0,0.24);
+        cursor: grab;
         border: none;
         padding: 0;
-        overflow: visible;
+        overflow: hidden;
     `
 
     const html = document.querySelector("html")
-    const fab = document.createElement("button")
+    const fab = document.createElement("div")
     fab.id = "transcriptonic-fab"
-    fab.ariaLabel = "TranscripTonic"
     fab.title = "TranscripTonic"
     fab.style.cssText = fabCss
 
-    const logoUrl = "https://ejnana.github.io/transcripto-status/icon.png"
-
     fab.innerHTML = `
-        <div id="fab-main-content" style="display: flex; align-items: center; justify-content: center; width: 100%; height: 100%;">
-            <img id="fab-default-logo" src="${logoUrl}" alt="TranscripTonic" draggable="false" style="width: 20px; height: 20px; object-fit: contain;" />
-            <span id="fab-letter-mark" style="display: none; color: #ffffff; font-weight: bold; font-size: 16px; text-transform: uppercase; font-family: sans-serif;"></span>
+        <div id="fab-brand-segment" role="button" tabindex="0" aria-label="Open TranscripTonic" style="background-color: #f34f16; height: 100%; display: flex; align-items: center; padding: 8px 12px; flex-shrink: 0; cursor: pointer;">
+            <img id="fab-brand-mark" src="${FAB_BRAND_MARK_URL}" alt="" draggable="false" style="width: 44px; height: 20px; object-fit: contain; display: block;" />
         </div>
 
-        <img id="fab-mini-badge" src="${logoUrl}" alt="Active Badge" draggable="false" style="
-            display: none;
-            position: absolute;
-            bottom: -2px;
-            right: -2px;
-            width: 14px;
-            height: 14px;
-            border-radius: 50%;
-            background-color: #071f29;
-            box-shadow: 0 0 2px rgba(0,0,0,0.5);
-            object-fit: contain;
-            pointer-events: none;
-        " />
+        <div id="fab-timer-segment" style="background-color: black; height: 100%; display: flex; align-items: center; gap: 4px; padding: 8px 12px 8px 8px; flex-shrink: 0;">
+            <img id="fab-timer-icon" src="${FAB_RECORDING_ICON_URL}" alt="" draggable="false" style="width: 24px; height: 24px; display: block;" />
+            <span id="fab-timer-text" style="color: white; font-weight: 700; font-size: 20px; line-height: 28px; white-space: nowrap; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;">0:00:00</span>
+        </div>
+
+        <div id="fab-note-button" role="button" tabindex="0" aria-label="Add a note" title="Add a note" style="background-color: #f6f6f6; width: 48px; height: 100%; flex-shrink: 0; display: flex; align-items: center; justify-content: center; padding: 8px; cursor: pointer;">
+            <img src="${FAB_NOTE_ICON_URL}" alt="" draggable="false" style="width: 24px; height: 24px; display: block;" />
+        </div>
+
+        <div id="fab-menu-button" role="button" tabindex="0" aria-label="More options" title="More options" style="background-color: #f6f6f6; width: 48px; height: 100%; flex-shrink: 0; display: flex; align-items: center; justify-content: center; padding: 8px; cursor: pointer;">
+            <img src="${FAB_MENU_ICON_URL}" alt="" draggable="false" style="width: 24px; height: 24px; display: block;" />
+        </div>
     `
 
     html?.appendChild(fab)
     makeVerticallyDraggable(fab)
 
-    fab.addEventListener("click", () => {
+    const brandSegment = /** @type {HTMLElement} */ (fab.querySelector("#fab-brand-segment"))
+    const noteButton = /** @type {HTMLElement} */ (fab.querySelector("#fab-note-button"))
+    const menuButton = /** @type {HTMLElement} */ (fab.querySelector("#fab-menu-button"))
+
+    function openSidePanel() {
         /** @type {ExtensionMessage} */
         const message = { type: "open_side_panel" }
         chrome.runtime.sendMessage(message, () => { })
+    }
+
+    brandSegment.addEventListener("click", openSidePanel)
+    brandSegment.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault()
+            openSidePanel()
+        }
+    })
+
+    noteButton.addEventListener("mouseenter", () => { noteButton.style.filter = "brightness(0.95)" })
+    noteButton.addEventListener("mouseleave", () => { noteButton.style.filter = "none" })
+    noteButton.addEventListener("click", (e) => {
+        e.stopPropagation()
+        toggleNotePanel(fab)
+    })
+    noteButton.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault()
+            e.stopPropagation()
+            toggleNotePanel(fab)
+        }
+    })
+
+    // Menu is present per the design but its behavior isn't defined yet — intentionally
+    // a no-op beyond hover feedback until a follow-up defines what "more options" contains.
+    menuButton.addEventListener("mouseenter", () => { menuButton.style.filter = "brightness(0.95)" })
+    menuButton.addEventListener("mouseleave", () => { menuButton.style.filter = "none" })
+    menuButton.addEventListener("click", (e) => { e.stopPropagation() })
+    menuButton.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault()
+            e.stopPropagation()
+        }
     })
 
     // 1. Initial storage query on load
-    chrome.storage.local.get(["transcript"], (resultUntyped) => {
+    chrome.storage.local.get(["meetingStartTimestamp"], (resultUntyped) => {
         const result = /** @type {ResultLocal} */ (resultUntyped)
-        updateFabState(fab, result.transcript)
+        if (result.meetingStartTimestamp) startFabTimer(fab, result.meetingStartTimestamp)
     })
 
     // 2. Storage event listener for ongoing updates
     chrome.storage.onChanged.addListener((changes, areaName) => {
-        if (areaName === "local" && changes.transcript) {
-            updateFabState(fab, changes.transcript.newValue)
+        if (areaName === "local" && changes.meetingStartTimestamp) {
+            startFabTimer(fab, changes.meetingStartTimestamp.newValue)
         }
     })
 }
 
 /**
- * @param {HTMLButtonElement} fab
+ * @description Lazily creates the (initially hidden) note-capture panel, a sibling of the
+ * FAB rather than a child of it, so it can be positioned independently and isn't affected
+ * by the FAB's drag handling. Idempotent — returns the existing panel on repeat calls.
+ * @returns {HTMLElement}
+ */
+function renderNotePanel() {
+    const existing = document.querySelector("#transcriptonic-note-panel")
+    if (existing) return /** @type {HTMLElement} */ (existing)
+
+    const panelCss = `
+        position: fixed;
+        display: none;
+        flex-direction: column;
+        gap: 8px;
+        width: 220px;
+        padding: 10px;
+        border-radius: 8px;
+        z-index: 100;
+        background-color: #f6f6f6;
+        box-shadow: 0px 8px 12px rgba(0,0,0,0.24);
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
+    `
+
+    const panel = document.createElement("div")
+    panel.id = "transcriptonic-note-panel"
+    panel.style.cssText = panelCss
+    panel.innerHTML = `
+        <textarea id="transcriptonic-note-input" placeholder="Add a note…" rows="3" style="
+            resize: none;
+            border: none;
+            outline: none;
+            border-radius: 8px;
+            padding: 8px;
+            background-color: white;
+            color: #1f1f1f;
+            font-size: 13px;
+            font-family: inherit;
+        "></textarea>
+        <div style="display: flex; align-items: center; justify-content: flex-end; gap: 8px;">
+            <span id="transcriptonic-note-confirmation" style="display: none; color: #2e7d32; font-size: 12px;">Saved</span>
+            <button id="transcriptonic-note-save" style="
+                border: none;
+                border-radius: 8px;
+                padding: 6px 12px;
+                background-color: #f34f16;
+                color: white;
+                font-size: 12px;
+                font-weight: 600;
+                cursor: pointer;
+            ">Save</button>
+        </div>
+    `
+
+    document.querySelector("html")?.appendChild(panel)
+
+    const textarea = /** @type {HTMLTextAreaElement} */ (panel.querySelector("#transcriptonic-note-input"))
+    const saveButton = /** @type {HTMLButtonElement} */ (panel.querySelector("#transcriptonic-note-save"))
+    const confirmation = /** @type {HTMLElement} */ (panel.querySelector("#transcriptonic-note-confirmation"))
+
+    function saveNote() {
+        const text = textarea.value.trim()
+        if (!text) {
+            closeNotePanel()
+            return
+        }
+        chrome.storage.local.get(["liveCommentNotes"], (resultUntyped) => {
+            const result = /** @type {ResultLocal} */ (resultUntyped)
+            const liveCommentNotes = (result.liveCommentNotes || []).concat([
+                { timestamp: new Date().toISOString(), text }
+            ])
+            chrome.storage.local.set({ liveCommentNotes }, () => {
+                textarea.value = ""
+                confirmation.style.display = "inline"
+                setTimeout(() => {
+                    confirmation.style.display = "none"
+                    closeNotePanel()
+                }, 800)
+            })
+        })
+    }
+
+    saveButton.addEventListener("click", (e) => {
+        e.stopPropagation()
+        saveNote()
+    })
+
+    // Don't let typing/clicking in the textarea reach the FAB's drag/click handling —
+    // the panel is a sibling of the FAB, not a descendant, so this is only needed for
+    // mousedown/click bubbling up to `document`'s click-away listener below.
+    textarea.addEventListener("mousedown", (e) => e.stopPropagation())
+    textarea.addEventListener("click", (e) => e.stopPropagation())
+    textarea.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" && !e.shiftKey) {
+            e.preventDefault()
+            saveNote()
+        }
+        else if (e.key === "Escape") {
+            closeNotePanel()
+        }
+        e.stopPropagation()
+    })
+
+    // Click-away to close
+    document.addEventListener("mousedown", (e) => {
+        const target = /** @type {Element} */ (e.target)
+        if (panel.style.display !== "none" && !panel.contains(target) && !target.closest("#fab-note-button")) {
+            closeNotePanel()
+        }
+    })
+
+    return panel
+}
+
+function closeNotePanel() {
+    const panel = document.querySelector("#transcriptonic-note-panel")
+    if (panel) /** @type {HTMLElement} */ (panel).style.display = "none"
+}
+
+/**
+ * @param {HTMLElement} fab
+ */
+function toggleNotePanel(fab) {
+    const panel = renderNotePanel()
+    const isOpen = panel.style.display !== "none"
+    if (isOpen) {
+        closeNotePanel()
+        return
+    }
+
+    const fabRect = fab.getBoundingClientRect()
+    panel.style.top = `${fabRect.bottom + 8}px`
+    panel.style.right = `${window.innerWidth - fabRect.right}px`
+    panel.style.display = "flex"
+
+    const textarea = /** @type {HTMLTextAreaElement} */ (panel.querySelector("#transcriptonic-note-input"))
+    textarea.focus()
+}
+
+/**
+ * @param {HTMLElement} fab
  */
 function makeVerticallyDraggable(fab) {
     let isDragging = false
@@ -490,45 +696,18 @@ function makeVerticallyDraggable(fab) {
     }, true) // Capture phase ensures it runs before the side-panel click handler
 }
 
-/**
- * Updates the FAB visual state based on the current transcript data.
- * @param {HTMLElement} fab 
- * @param {TranscriptBlock[] | undefined} transcript 
- */
-function updateFabState(fab, transcript) {
-    if (!fab) return
-
-    const defaultLogo = fab.querySelector("#fab-default-logo")
-    const letterMark = fab.querySelector("#fab-letter-mark")
-    const miniBadge = fab.querySelector("#fab-mini-badge")
-
-    if (transcript && transcript.length > 0) {
-        const lastSpeaker = transcript[transcript.length - 1]?.personName
-
-        if (lastSpeaker && lastSpeaker.trim() !== "") {
-            const initial = lastSpeaker.trim().charAt(0)
-
-            // Active Speaker State: Show letter mark + corner badge, hide central logo
-            if (defaultLogo) defaultLogo.style.display = "none"
-            if (letterMark) {
-                letterMark.textContent = initial
-                letterMark.style.display = "inline"
-            }
-            if (miniBadge) miniBadge.style.display = "block"
-            return
-        }
-    }
-
-    // Default State: Fallback to central logo, hide mark + badge
-    if (defaultLogo) defaultLogo.style.display = "block"
-    if (letterMark) letterMark.style.display = "none"
-    if (miniBadge) miniBadge.style.display = "none"
-}
-
 function unmountFab() {
+    if (fabTimerIntervalId) {
+        clearInterval(fabTimerIntervalId)
+        fabTimerIntervalId = null
+    }
     const fab = document.querySelector("#transcriptonic-fab")
     if (fab) {
         fab.remove()
+    }
+    const notePanel = document.querySelector("#transcriptonic-note-panel")
+    if (notePanel) {
+        notePanel.remove()
     }
 }
 

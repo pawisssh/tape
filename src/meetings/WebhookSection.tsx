@@ -1,17 +1,15 @@
-import { useEffect, useState } from "react"
-import { LinkIcon } from "./ui/icons"
-import { Button } from "@/components/ui/button"
+import { forwardRef, useEffect, useImperativeHandle, useState } from "react"
+import { ArticleIcon } from "./ui/icons"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
-import { Separator } from "@/components/ui/separator"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { getSync, onStorageChanged, setSync } from "@/lib/chrome-storage"
-import { requestPermissions, webhookOriginPattern } from "@/lib/permissions"
+import { isInsecureUrl, requestPermissions, webhookOriginPattern } from "@/lib/permissions"
 import { toast } from "@/components/ui/toast"
 import { useDebouncedEffect } from "@/hooks/use-debounced-effect"
-import guideIcon from "../../extension/icons/guide.svg"
+import InsecureUrlWarning from "./ui/InsecureUrlWarning"
 
 const SIMPLE_BODY_EXAMPLE = `{
     "webhookBodyType": "simple",
@@ -55,15 +53,32 @@ const ADVANCED_BODY_EXAMPLE = `{
     ]
 }`
 
+export interface WebhookSectionHandle {
+    connect: () => void
+}
+
+interface WebhookSectionProps {
+    // The Connect action's button now lives in IntegrationsView.tsx's header (matching
+    // the redesigned Templates/Meetings header pattern) rather than in this panel's own
+    // body, so its trigger (connect()) and live state are exposed upward instead of
+    // rendering a button here — see ProviderPanel.tsx for the same pattern.
+    onConnectingChange?: (isConnecting: boolean) => void
+    onCanConnectChange?: (canConnect: boolean) => void
+}
+
 // Rendered directly in the Integrations page's detail panel (see IntegrationsView.tsx) —
 // no Dialog/modal chrome of its own.
-export default function WebhookSection() {
+const WebhookSection = forwardRef<WebhookSectionHandle, WebhookSectionProps>(function WebhookSection(
+    { onConnectingChange, onCanConnectChange },
+    ref,
+) {
     const [webhookUrl, setWebhookUrl] = useState("")
     const [autoPost, setAutoPost] = useState(true)
     const [autoDownload, setAutoDownload] = useState(true)
     const [obsidianAutoSaveOn, setObsidianAutoSaveOn] = useState(false)
     const [bodyType, setBodyType] = useState<"simple" | "advanced">("simple")
     const [isConnecting, setIsConnecting] = useState(false)
+    const [insecureAcknowledged, setInsecureAcknowledged] = useState(false)
 
     useEffect(() => {
         function load() {
@@ -122,7 +137,15 @@ export default function WebhookSection() {
         700,
     )
 
-    function handleConnect() {
+    // Editing the URL after acknowledging an insecure one re-arms the warning — acknowledging
+    // "this http:// URL is fine" shouldn't silently carry over to a different URL typed next.
+    useEffect(() => {
+        setInsecureAcknowledged(false)
+    }, [webhookUrl])
+
+    const showInsecureWarning = isInsecureUrl(webhookUrl) && !insecureAcknowledged
+
+    function performConnect() {
         setIsConnecting(true)
         requestWebhookAndNotificationPermission(webhookUrl)
             .then((granted) => {
@@ -144,6 +167,28 @@ export default function WebhookSection() {
             })
     }
 
+    function handleConnect() {
+        if (showInsecureWarning) {
+            // Don't proceed silently — the inline warning below the field (with its own
+            // "Connect anyway" button) is the actual path forward; nudge the user there
+            // since Connect itself is triggered from IntegrationsView.tsx's header, which
+            // may be scrolled away from the warning.
+            toast.add({ title: "Acknowledge the security warning below to connect", type: "warning" })
+            return
+        }
+        performConnect()
+    }
+
+    useImperativeHandle(ref, () => ({ connect: handleConnect }))
+
+    useEffect(() => {
+        onConnectingChange?.(isConnecting)
+    }, [isConnecting, onConnectingChange])
+
+    useEffect(() => {
+        onCanConnectChange?.(!!webhookUrl.trim())
+    }, [webhookUrl, onCanConnectChange])
+
     function handleAutoPostChange(checked: boolean) {
         setAutoPost(checked)
         setSync({ autoPostWebhookAfterMeeting: checked })
@@ -164,39 +209,36 @@ export default function WebhookSection() {
     }
 
     return (
-        <div>
+        <div className="flex flex-col gap-6">
             <div>
                 <Label htmlFor="webhook-url">Webhook URL</Label>
-                <div className="mt-2 flex">
-                    <Input
-                        type="url"
-                        id="webhook-url"
-                        className="rounded-none"
-                        placeholder="https://your-webhook-url.com"
-                        value={webhookUrl}
-                        onChange={(e) => setWebhookUrl(e.target.value)}
-                    />
-                    <Button
-                        type="button"
-                        variant="outline"
-                        className="rounded-none"
-                        disabled={isConnecting || !webhookUrl.trim()}
-                        onClick={handleConnect}
-                    >
-                        <LinkIcon className="size-4" /> {isConnecting ? "Connecting…" : "Connect"}
-                    </Button>
-                </div>
+                <Input
+                    type="url"
+                    id="webhook-url"
+                    className="mt-2 rounded-none"
+                    placeholder="https://your-webhook-url.com"
+                    value={webhookUrl}
+                    onChange={(e) => setWebhookUrl(e.target.value)}
+                />
+                {showInsecureWarning && (
+                    <div className="mt-2">
+                        <InsecureUrlWarning
+                            onAcknowledge={() => {
+                                setInsecureAcknowledged(true)
+                                performConnect()
+                            }}
+                        />
+                    </div>
+                )}
             </div>
 
-            <Separator className="my-4" />
-
-            <div>
+            <div className="flex flex-col gap-2">
                 <div className="flex items-center gap-2">
                     <Checkbox id="auto-post-webhook" checked={autoPost} onCheckedChange={(v) => handleAutoPostChange(v === true)} />
                     <Label htmlFor="auto-post-webhook">Automatically post transcript to webhook URL, after each meeting</Label>
                 </div>
                 {anotherExporterActive ? (
-                    <div className="mt-4 flex items-center gap-2">
+                    <div className="flex items-center gap-2">
                         <Checkbox
                             id="auto-download-file"
                             checked={autoDownload}
@@ -206,8 +248,6 @@ export default function WebhookSection() {
                     </div>
                 ) : null}
             </div>
-
-            <Separator className="my-4" />
 
             <RadioGroup value={bodyType} onValueChange={handleBodyTypeChange} className="gap-4">
                 <div className="flex items-start gap-2">
@@ -226,50 +266,54 @@ export default function WebhookSection() {
                 </div>
             </RadioGroup>
 
-            <Separator className="my-4" />
-
-            <p className="font-bold text-meetings-ink">Webhook help</p>
-            <p className="mt-1 mb-3 text-sm text-meetings-ink-muted">Integration guides</p>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                <a
-                    className="flex items-start gap-2 border border-meetings-accent p-2 font-bold text-meetings-ink"
-                    href="https://github.com/vivek-nexus/transcriptonic/wiki/Google-Docs-integration-guide?utm_source=extension"
-                    target="_blank"
-                    rel="noreferrer"
-                >
-                    <img src={guideIcon} alt="" width={16} />
-                    <span>Get transcripts on Google Docs</span>
-                </a>
-                <a
-                    className="flex items-start gap-2 border border-meetings-accent p-2 font-bold text-meetings-ink"
-                    href="https://github.com/vivek-nexus/transcriptonic/wiki/n8n-integration-guide?utm_source=extension"
-                    target="_blank"
-                    rel="noreferrer"
-                >
-                    <img src={guideIcon} alt="" width={16} />
-                    <span>Using webhooks with n8n</span>
-                </a>
-            </div>
-            <Separator className="my-4" />
-            <p className="font-bold text-meetings-ink">Webhook JSON body</p>
             <div>
-                <Collapsible>
-                    <CollapsibleTrigger className="font-bold text-meetings-ink">Webhook body (simple)</CollapsibleTrigger>
-                    <CollapsibleContent>
-                        <pre className="my-4 overflow-x-auto border border-meetings-border bg-meetings-chip p-4 text-xs leading-relaxed">
-                            {SIMPLE_BODY_EXAMPLE}
-                        </pre>
-                    </CollapsibleContent>
-                </Collapsible>
-                <Collapsible>
-                    <CollapsibleTrigger className="font-bold text-meetings-ink">Webhook body (advanced)</CollapsibleTrigger>
-                    <CollapsibleContent>
-                        <pre className="my-4 overflow-x-auto border border-meetings-border bg-meetings-chip p-4 text-xs leading-relaxed">
-                            {ADVANCED_BODY_EXAMPLE}
-                        </pre>
-                    </CollapsibleContent>
-                </Collapsible>
+                <p className="text-base font-bold text-meetings-ink">Webhook help</p>
+                <p className="mt-1 mb-3 text-sm text-meetings-ink-muted">Integration guides</p>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <a
+                        className="flex items-start gap-2 border border-meetings-border p-2 font-bold text-meetings-ink"
+                        href="https://github.com/vivek-nexus/transcriptonic/wiki/Google-Docs-integration-guide?utm_source=extension"
+                        target="_blank"
+                        rel="noreferrer"
+                    >
+                        <ArticleIcon className="size-4" />
+                        <span>Get transcripts on Google Docs</span>
+                    </a>
+                    <a
+                        className="flex items-start gap-2 border border-meetings-border p-2 font-bold text-meetings-ink"
+                        href="https://github.com/vivek-nexus/transcriptonic/wiki/n8n-integration-guide?utm_source=extension"
+                        target="_blank"
+                        rel="noreferrer"
+                    >
+                        <ArticleIcon className="size-4" />
+                        <span>Using webhooks with n8n</span>
+                    </a>
+                </div>
+            </div>
+
+            <div>
+                <p className="text-base font-bold text-meetings-ink">Webhook JSON body</p>
+                <div className="mt-2 flex flex-col gap-2">
+                    <Collapsible>
+                        <CollapsibleTrigger className="font-bold text-meetings-ink">Webhook body (simple)</CollapsibleTrigger>
+                        <CollapsibleContent>
+                            <pre className="my-4 overflow-x-auto border border-meetings-border bg-meetings-chip p-4 text-xs leading-relaxed">
+                                {SIMPLE_BODY_EXAMPLE}
+                            </pre>
+                        </CollapsibleContent>
+                    </Collapsible>
+                    <Collapsible>
+                        <CollapsibleTrigger className="font-bold text-meetings-ink">Webhook body (advanced)</CollapsibleTrigger>
+                        <CollapsibleContent>
+                            <pre className="my-4 overflow-x-auto border border-meetings-border bg-meetings-chip p-4 text-xs leading-relaxed">
+                                {ADVANCED_BODY_EXAMPLE}
+                            </pre>
+                        </CollapsibleContent>
+                    </Collapsible>
+                </div>
             </div>
         </div>
     )
-}
+})
+
+export default WebhookSection

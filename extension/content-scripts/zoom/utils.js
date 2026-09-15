@@ -27,20 +27,23 @@ function showNotificationZoom(extensionStatusJSON) {
         // Banner CSS
         let html = iframeDOM.querySelector("html")
         let obj = iframeDOM.createElement("div")
+        let dot = iframeDOM.createElement("span")
         let logo = iframeDOM.createElement("img")
         let text = iframeDOM.createElement("p")
 
         logo.setAttribute(
             "src",
-            "https://ejnana.github.io/transcripto-status/icon.png"
+            LOGO_URL
         )
         logo.setAttribute("height", "32px")
         logo.setAttribute("width", "32px")
-        logo.style.cssText = "border-radius: 4px"
+        logo.style.cssText = "border-radius: 8px"
         text.style.cssText = "margin-top: 1rem; margin-bottom:1rem"
 
+        obj.style.cssText = `top: 5%; ${commonCSS}`
+        dot.style.cssText = `width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; background: ${extensionStatusJSON.status === 200 ? "#f34f16" : "orange"};`
+
         if (extensionStatusJSON.status === 200) {
-            obj.style.cssText = `color: #2A9ACA ; top: 5%; ${commonCSS}`
             text.innerHTML = extensionStatusJSON.message
 
             // Remove banner once transcript is on
@@ -49,7 +52,6 @@ function showNotificationZoom(extensionStatusJSON) {
             })
         }
         else {
-            obj.style.cssText = `color: orange ; top: 5%; ${commonCSS}`
             text.innerHTML = extensionStatusJSON.message
 
             setTimeout(() => {
@@ -59,6 +61,7 @@ function showNotificationZoom(extensionStatusJSON) {
 
         obj.prepend(text)
         obj.prepend(logo)
+        obj.prepend(dot)
         if (html)
             html.append(obj)
     }

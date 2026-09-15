@@ -32,7 +32,7 @@
  * @typedef {number} ObsidianLlmTimeoutMs Milliseconds to wait for the local LLM server to respond before aborting and falling back to the plain transcript note.
  */
 /**
- * @typedef {boolean} ObsidianLlmAutoRun Whether LLM summarization runs automatically as part of the Obsidian handoff. When `false`, the handoff skips it (falls straight to the plain transcript note) and the user is expected to trigger it manually instead — see the "summarize_meeting_now" message, handled by summarizeMeetingNow() in extension/background-script/meetings.js.
+ * @typedef {boolean} ObsidianLlmAutoRun Whether LLM summarization runs automatically as part of the Obsidian handoff. When `false`, the handoff skips it (falls straight to the plain transcript note) and the user is expected to trigger it manually instead — see summarizeNow() in extension/obsidian/summarize-now.js, called directly from MeetingDetailToolbar.tsx's "Summarize now".
  */
 /**
  * @typedef {string} ObsidianLlmSystemPrompt The full `role: "system"` message text sent to the LLM ahead of every summarization request (see enrichWithLlm() in extension/obsidian/llm.js) — user-editable on the Settings page's AI summary category, a full replace rather than an addendum to the built-in prompt. Empty/unset falls back to interpreter.js's INTERPRETER_SYSTEM_PROMPT (see getObsidianSettings()). Editing out its "respond with exactly one JSON object" instruction breaks summarization's response parsing — the Settings UI's "Reset to default" button is the recovery path, not a code-level guard.
@@ -76,6 +76,22 @@
  * @property {TemplateProperty[]} properties Frontmatter fields this template contributes — see markdown.js's buildFrontmatter().
  * @property {string} noteContent Template string for the note body (replaces the old fixed six-section renderer) — resolved by interpreter.js's resolveValue().
  * @property {string} [systemPrompt] DEPRECATED legacy field from before the Properties/Note-content redesign — inert, read only by templates.js's migrateLegacyTemplate() as a marker that a template needs one-time default seeding; never sent to the model.
+ */
+
+/**
+ * @typedef {Object} DictionaryCategory A user-defined group of DictionaryEntry records, persisted in chrome.storage.sync (see extension/obsidian/dictionary.js).
+ * @property {string} id Stable id (crypto.randomUUID()), assigned on first save. The reserved id "uncategorized" is a built-in category that always exists, is never itself persisted, and cannot be renamed or deleted.
+ * @property {string} name Display name shown in the Dictionary list.
+ * @property {string} createdAt ISO timestamp, set once on first save. The built-in "uncategorized" category uses an empty string since it's never actually saved.
+ */
+/**
+ * @typedef {Object} DictionaryEntry One user-defined word -> optional-replacement pair, persisted in chrome.storage.sync (see extension/obsidian/dictionary.js) — used by applyDictionaryReplacements() (extension/background-script/utils.js) to fix commonly mis-transcribed words/names/jargon before a meeting's transcript is stored.
+ * @property {string} id Stable id (crypto.randomUUID()), assigned on first save.
+ * @property {string} word The (possibly mis-transcribed) word or phrase to match, case-insensitively, as a whole word.
+ * @property {string} [replacement] Optional. Empty/absent means this entry is reference-only and is skipped entirely by applyDictionaryReplacements().
+ * @property {string} categoryId A DictionaryCategory id, or the reserved "uncategorized".
+ * @property {string} createdAt ISO timestamp, set once on first save.
+ * @property {string} updatedAt ISO timestamp, refreshed on every save.
  */
 
 /**

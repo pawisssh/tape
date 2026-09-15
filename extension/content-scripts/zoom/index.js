@@ -35,20 +35,29 @@ function initZoom() {
             // Initialise new state for current meeting
             const state = createContentScriptState("Zoom", "zoom")
             // Push fresh state to chrome storage
-            overWriteChromeStorage(state, ["meetingSoftware", "meetingStartTimestamp", "meetingTitle", "transcript", "chatMessages"], false)
+            overWriteChromeStorage(state, ["meetingSoftware", "meetingStartTimestamp", "meetingTitle", "transcript", "chatMessages", "liveCommentNotes"], false)
 
             checkExtensionStatus(state).finally(() => {
                 console.log("Extension status " + state.extensionStatusJSON.status)
 
-                // Enable extension functions only if status is 200
-                if (state.extensionStatusJSON.status === 200) {
+                // Skip starting capture routines entirely when the user has turned capture off.
+                chrome.storage.sync.get(["operationMode"], function (resultSyncUntyped) {
+                    const resultSync = /** @type {ResultSync} */ (resultSyncUntyped)
+                    if (resultSync.operationMode === "off") {
+                        console.log("Capture mode is off, not starting capture routines")
+                        return
+                    }
 
-                    zoomMeetingRoutines(state)
-                }
-                else {
-                    // Show downtime message as extension status is 400
-                    showNotificationZoom(state.extensionStatusJSON)
-                }
+                    // Enable extension functions only if status is 200
+                    if (state.extensionStatusJSON.status === 200) {
+
+                        zoomMeetingRoutines(state)
+                    }
+                    else {
+                        // Show downtime message as extension status is 400
+                        showNotificationZoom(state.extensionStatusJSON)
+                    }
+                })
             })
         })
 }
@@ -110,6 +119,7 @@ function zoomMeetingRoutines(state) {
                             .catch((err) => {
                                 console.error(err)
                                 state.isTranscriptDomErrorCaptured = true
+                                setFabRecordingState(false)
                                 showNotificationZoom(extensionStatusJSON_bug)
 
                                 logError(state, "001", err)
@@ -132,7 +142,9 @@ function zoomMeetingRoutines(state) {
                                 // Push any data in the buffer variables to the transcript array. Needed to handle one or more speaking when meeting ends.
 
                                 pushBufferToTranscript(state)
-                                // Save to chrome storage and send message to download transcript from background script
+                                // Save to chrome storage and send message to download transcript from background script.
+                                // Deliberately excludes "liveCommentNotes" — see the matching comment in
+                                // google-meet/index.js's meeting-end handler for why.
                                 overWriteChromeStorage(state, ["transcript", "chatMessages"], true)
 
                                 unmountFab()
@@ -210,6 +222,7 @@ function transcriptMutationCallbackZoom(state, mutationsList) {
                 logError(state, "005", err)
             }
             state.isTranscriptDomErrorCaptured = true
+            setFabRecordingState(false)
         }
     })
 }

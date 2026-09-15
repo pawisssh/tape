@@ -76,12 +76,20 @@ export default defineManifest({
         ],
     },
     // Lets the recording toast/FAB content scripts (extension/content-scripts/**) load
-    // extension/icon.png as an <img src> inside the host meeting page — that subresource
-    // load is attributed to the host page's own origin under MV3, even though the code
-    // inserting it runs at extension privilege.
+    // extension/icon.png and the FAB's segment icons as an <img src> inside the host
+    // meeting page — that subresource load is attributed to the host page's own origin
+    // under MV3, even though the code inserting it runs at extension privilege.
     web_accessible_resources: [
         {
-            resources: ["extension/icon.png"],
+            resources: [
+                "extension/icon.png",
+                "extension/fab-brand-mark.svg",
+                "extension/fab-brand-mark-inactive.svg",
+                "extension/fab-recording-icon.svg",
+                "extension/fab-play-icon.svg",
+                "extension/fab-note-icon.svg",
+                "extension/fab-menu-icon.svg",
+            ],
             matches: [
                 "https://meet.google.com/*",
                 "https://teams.live.com/*",

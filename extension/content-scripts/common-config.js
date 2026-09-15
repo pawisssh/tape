@@ -11,6 +11,12 @@ const LOG_ERROR_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbz0VFUYIke
 const mutationConfig = { childList: true, attributes: true, subtree: true, characterData: true }
 
 const LOGO_URL = chrome.runtime.getURL("extension/icon.png")
+const FAB_BRAND_MARK_URL = chrome.runtime.getURL("extension/fab-brand-mark.svg")
+const FAB_BRAND_MARK_INACTIVE_URL = chrome.runtime.getURL("extension/fab-brand-mark-inactive.svg")
+const FAB_RECORDING_ICON_URL = chrome.runtime.getURL("extension/fab-recording-icon.svg")
+const FAB_PLAY_ICON_URL = chrome.runtime.getURL("extension/fab-play-icon.svg")
+const FAB_NOTE_ICON_URL = chrome.runtime.getURL("extension/fab-note-icon.svg")
+const FAB_MENU_ICON_URL = chrome.runtime.getURL("extension/fab-menu-icon.svg")
 const commonCSS = `background: rgba(44, 44, 46, 0.92);
     color: rgba(255, 255, 255, 0.87);
     backdrop-filter: blur(16px);

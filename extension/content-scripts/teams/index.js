@@ -119,6 +119,7 @@ function teamsMeetingRoutines(state) {
       .catch((err) => {
         console.error(err)
         state.isTranscriptDomErrorCaptured = true
+        setFabRecordingState(false)
         showNotificationTeams(extensionStatusJSON_bug)
 
         logError(state, "001", err)
@@ -219,6 +220,7 @@ function transcriptMutationCallbackTeams(state, mutationsList) {
         logError(state, "005", err)
       }
       state.isTranscriptDomErrorCaptured = true
+      setFabRecordingState(false)
     }
   })
 }

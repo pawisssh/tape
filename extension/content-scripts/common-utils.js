@@ -329,29 +329,80 @@ function pulseStatus() {
     }, 3000)
 }
 
+/** Handle for the FAB's live elapsed-timer interval, shared between renderFab() and unmountFab(). */
+let fabTimerIntervalId = null
+
+/**
+ * @description Formats elapsed seconds since `startIso` as zero-padded H:MM:SS (e.g. "0:00:23", "1:04:12").
+ * @param {string} startIso
+ */
+function formatElapsedTime(startIso) {
+    const elapsedSeconds = Math.max(0, Math.floor((Date.now() - new Date(startIso).getTime()) / 1000))
+    const h = Math.floor(elapsedSeconds / 3600)
+    const m = Math.floor((elapsedSeconds % 3600) / 60)
+    const s = elapsedSeconds % 60
+    const pad = (/** @type {number} */ n) => String(n).padStart(2, "0")
+    return `${h}:${pad(m)}:${pad(s)}`
+}
+
+/**
+ * @param {HTMLElement} fab
+ * @param {string} startIso
+ */
+function startFabTimer(fab, startIso) {
+    if (fabTimerIntervalId) clearInterval(fabTimerIntervalId)
+    const timerText = fab.querySelector("#fab-timer-text")
+    const tick = () => { if (timerText) timerText.textContent = formatElapsedTime(startIso) }
+    tick()
+    fabTimerIntervalId = setInterval(tick, 1000)
+}
+
+/**
+ * @description Toggles the FAB between its recording and not-recording looks (brand
+ * segment color/mark, timer icon, timer text opacity). When switching to not-recording,
+ * freezes/stops the live timer at 0:00:00 per the Figma "not record" state.
+ * @param {boolean} isRecording
+ */
+function setFabRecordingState(isRecording) {
+    const fab = /** @type {HTMLElement | null} */ (document.querySelector("#transcriptonic-fab"))
+    if (!fab) return
+
+    const brandSegment = /** @type {HTMLElement} */ (fab.querySelector("#fab-brand-segment"))
+    const brandMark = /** @type {HTMLImageElement} */ (fab.querySelector("#fab-brand-mark"))
+    const timerIcon = /** @type {HTMLImageElement} */ (fab.querySelector("#fab-timer-icon"))
+    const timerText = /** @type {HTMLElement} */ (fab.querySelector("#fab-timer-text"))
+
+    if (brandSegment) brandSegment.style.backgroundColor = isRecording ? "#f34f16" : "#a6a6a6"
+    if (brandMark) brandMark.src = isRecording ? FAB_BRAND_MARK_URL : FAB_BRAND_MARK_INACTIVE_URL
+    if (timerIcon) timerIcon.src = isRecording ? FAB_RECORDING_ICON_URL : FAB_PLAY_ICON_URL
+    if (timerText) timerText.style.color = isRecording ? "white" : "rgba(255,255,255,0.38)"
+
+    if (!isRecording) {
+        if (fabTimerIntervalId) {
+            clearInterval(fabTimerIntervalId)
+            fabTimerIntervalId = null
+        }
+        if (timerText) timerText.textContent = "0:00:00"
+    }
+}
+
 function renderFab() {
-    // A plain div, not a button — the pill now hosts two independently clickable
-    // zones (open side panel / toggle note panel), and a <button> may not validly
-    // contain nested interactive descendants.
     const fabCss = `
         position: fixed;
         top: 50%;
         bottom: 50%;
         right: 8px;
         height: 40px;
-        width: 76px;
-        border-radius: 20px;
+        width: auto;
+        border-radius: 8px;
         z-index: 100;
         display: flex;
         align-items: center;
-        justify-content: space-between;
-        gap: 4px;
-        background-color: #2c2c2e;
-        box-shadow: 0 0 0 1.5px #f34f16, 0px 8px 16px rgba(0,0,0,0.35);
+        box-shadow: 0px 8px 12px rgba(0,0,0,0.24);
         cursor: grab;
         border: none;
-        padding: 0 4px;
-        overflow: visible;
+        padding: 0;
+        overflow: hidden;
     `
 
     const html = document.querySelector("html")
@@ -361,40 +412,30 @@ function renderFab() {
     fab.style.cssText = fabCss
 
     fab.innerHTML = `
-        <div id="fab-main-content" role="button" tabindex="0" aria-label="Open TranscripTonic" style="flex: 1; display: flex; align-items: center; justify-content: center; height: 32px; border-radius: 16px; cursor: pointer;">
-            <img id="fab-default-logo" src="${LOGO_URL}" alt="TranscripTonic" draggable="false" style="width: 20px; height: 20px; object-fit: contain;" />
-            <span id="fab-letter-mark" style="display: none; color: rgba(255,255,255,0.87); font-weight: bold; font-size: 16px; text-transform: uppercase; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;"></span>
+        <div id="fab-brand-segment" role="button" tabindex="0" aria-label="Open TranscripTonic" style="background-color: #f34f16; height: 100%; display: flex; align-items: center; padding: 8px 12px; flex-shrink: 0; cursor: pointer;">
+            <img id="fab-brand-mark" src="${FAB_BRAND_MARK_URL}" alt="" draggable="false" style="width: 44px; height: 20px; object-fit: contain; display: block;" />
         </div>
 
-        <div id="fab-divider" style="width: 1px; height: 20px; flex-shrink: 0; background-color: rgba(255,255,255,0.15);"></div>
-
-        <div id="fab-note-button" role="button" tabindex="0" aria-label="Add a note" title="Add a note" style="width: 28px; height: 28px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; border-radius: 50%; cursor: pointer;">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.87)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M12 20h9"></path>
-                <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z"></path>
-            </svg>
+        <div id="fab-timer-segment" style="background-color: black; height: 100%; display: flex; align-items: center; gap: 4px; padding: 8px 12px 8px 8px; flex-shrink: 0;">
+            <img id="fab-timer-icon" src="${FAB_RECORDING_ICON_URL}" alt="" draggable="false" style="width: 24px; height: 24px; display: block;" />
+            <span id="fab-timer-text" style="color: white; font-weight: 700; font-size: 20px; line-height: 28px; white-space: nowrap; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;">0:00:00</span>
         </div>
 
-        <img id="fab-mini-badge" src="${LOGO_URL}" alt="Active Badge" draggable="false" style="
-            display: none;
-            position: absolute;
-            bottom: -2px;
-            right: -2px;
-            width: 14px;
-            height: 14px;
-            border-radius: 50%;
-            background-color: #2c2c2e;
-            box-shadow: 0 0 0 1px rgba(255,255,255,0.12);
-            object-fit: contain;
-            pointer-events: none;
-        " />
+        <div id="fab-note-button" role="button" tabindex="0" aria-label="Add a note" title="Add a note" style="background-color: #f6f6f6; width: 48px; height: 100%; flex-shrink: 0; display: flex; align-items: center; justify-content: center; padding: 8px; cursor: pointer;">
+            <img src="${FAB_NOTE_ICON_URL}" alt="" draggable="false" style="width: 24px; height: 24px; display: block;" />
+        </div>
+
+        <div id="fab-menu-button" role="button" tabindex="0" aria-label="More options" title="More options" style="background-color: #f6f6f6; width: 48px; height: 100%; flex-shrink: 0; display: flex; align-items: center; justify-content: center; padding: 8px; cursor: pointer;">
+            <img src="${FAB_MENU_ICON_URL}" alt="" draggable="false" style="width: 24px; height: 24px; display: block;" />
+        </div>
     `
 
     html?.appendChild(fab)
     makeVerticallyDraggable(fab)
 
-    const mainContent = /** @type {HTMLElement} */ (fab.querySelector("#fab-main-content"))
+    const brandSegment = /** @type {HTMLElement} */ (fab.querySelector("#fab-brand-segment"))
     const noteButton = /** @type {HTMLElement} */ (fab.querySelector("#fab-note-button"))
+    const menuButton = /** @type {HTMLElement} */ (fab.querySelector("#fab-menu-button"))
 
     function openSidePanel() {
         /** @type {ExtensionMessage} */
@@ -402,16 +443,16 @@ function renderFab() {
         chrome.runtime.sendMessage(message, () => { })
     }
 
-    mainContent.addEventListener("click", openSidePanel)
-    mainContent.addEventListener("keydown", (e) => {
+    brandSegment.addEventListener("click", openSidePanel)
+    brandSegment.addEventListener("keydown", (e) => {
         if (e.key === "Enter" || e.key === " ") {
             e.preventDefault()
             openSidePanel()
         }
     })
 
-    noteButton.addEventListener("mouseenter", () => { noteButton.style.backgroundColor = "rgba(255,255,255,0.1)" })
-    noteButton.addEventListener("mouseleave", () => { noteButton.style.backgroundColor = "transparent" })
+    noteButton.addEventListener("mouseenter", () => { noteButton.style.filter = "brightness(0.95)" })
+    noteButton.addEventListener("mouseleave", () => { noteButton.style.filter = "none" })
     noteButton.addEventListener("click", (e) => {
         e.stopPropagation()
         toggleNotePanel(fab)
@@ -424,16 +465,28 @@ function renderFab() {
         }
     })
 
+    // Menu is present per the design but its behavior isn't defined yet — intentionally
+    // a no-op beyond hover feedback until a follow-up defines what "more options" contains.
+    menuButton.addEventListener("mouseenter", () => { menuButton.style.filter = "brightness(0.95)" })
+    menuButton.addEventListener("mouseleave", () => { menuButton.style.filter = "none" })
+    menuButton.addEventListener("click", (e) => { e.stopPropagation() })
+    menuButton.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault()
+            e.stopPropagation()
+        }
+    })
+
     // 1. Initial storage query on load
-    chrome.storage.local.get(["transcript"], (resultUntyped) => {
+    chrome.storage.local.get(["meetingStartTimestamp"], (resultUntyped) => {
         const result = /** @type {ResultLocal} */ (resultUntyped)
-        updateFabState(fab, result.transcript)
+        if (result.meetingStartTimestamp) startFabTimer(fab, result.meetingStartTimestamp)
     })
 
     // 2. Storage event listener for ongoing updates
     chrome.storage.onChanged.addListener((changes, areaName) => {
-        if (areaName === "local" && changes.transcript) {
-            updateFabState(fab, changes.transcript.newValue)
+        if (areaName === "local" && changes.meetingStartTimestamp) {
+            startFabTimer(fab, changes.meetingStartTimestamp.newValue)
         }
     })
 }
@@ -455,10 +508,10 @@ function renderNotePanel() {
         gap: 8px;
         width: 220px;
         padding: 10px;
-        border-radius: 12px;
+        border-radius: 8px;
         z-index: 100;
-        background-color: #2c2c2e;
-        box-shadow: 0 0 0 1.5px #f34f16, 0px 8px 16px rgba(0,0,0,0.35);
+        background-color: #f6f6f6;
+        box-shadow: 0px 8px 12px rgba(0,0,0,0.24);
         font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
     `
 
@@ -472,13 +525,13 @@ function renderNotePanel() {
             outline: none;
             border-radius: 8px;
             padding: 8px;
-            background-color: rgba(255,255,255,0.08);
-            color: rgba(255,255,255,0.87);
+            background-color: white;
+            color: #1f1f1f;
             font-size: 13px;
             font-family: inherit;
         "></textarea>
         <div style="display: flex; align-items: center; justify-content: flex-end; gap: 8px;">
-            <span id="transcriptonic-note-confirmation" style="display: none; color: #6fcf97; font-size: 12px;">Saved</span>
+            <span id="transcriptonic-note-confirmation" style="display: none; color: #2e7d32; font-size: 12px;">Saved</span>
             <button id="transcriptonic-note-save" style="
                 border: none;
                 border-radius: 8px;
@@ -643,42 +696,11 @@ function makeVerticallyDraggable(fab) {
     }, true) // Capture phase ensures it runs before the side-panel click handler
 }
 
-/**
- * Updates the FAB visual state based on the current transcript data.
- * @param {HTMLElement} fab 
- * @param {TranscriptBlock[] | undefined} transcript 
- */
-function updateFabState(fab, transcript) {
-    if (!fab) return
-
-    const defaultLogo = fab.querySelector("#fab-default-logo")
-    const letterMark = fab.querySelector("#fab-letter-mark")
-    const miniBadge = fab.querySelector("#fab-mini-badge")
-
-    if (transcript && transcript.length > 0) {
-        const lastSpeaker = transcript[transcript.length - 1]?.personName
-
-        if (lastSpeaker && lastSpeaker.trim() !== "") {
-            const initial = lastSpeaker.trim().charAt(0)
-
-            // Active Speaker State: Show letter mark + corner badge, hide central logo
-            if (defaultLogo) defaultLogo.style.display = "none"
-            if (letterMark) {
-                letterMark.textContent = initial
-                letterMark.style.display = "inline"
-            }
-            if (miniBadge) miniBadge.style.display = "block"
-            return
-        }
-    }
-
-    // Default State: Fallback to central logo, hide mark + badge
-    if (defaultLogo) defaultLogo.style.display = "block"
-    if (letterMark) letterMark.style.display = "none"
-    if (miniBadge) miniBadge.style.display = "none"
-}
-
 function unmountFab() {
+    if (fabTimerIntervalId) {
+        clearInterval(fabTimerIntervalId)
+        fabTimerIntervalId = null
+    }
     const fab = document.querySelector("#transcriptonic-fab")
     if (fab) {
         fab.remove()

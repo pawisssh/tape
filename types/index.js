@@ -136,7 +136,7 @@
  * @property {ChatMessage[]} chatMessages array containing chat messages from the meeting
  * @property {CommentNoteEntry[]} liveCommentNotes quick notes typed via the floating widget's note panel during the meeting
  * @property {StateTranscriptBlock} stateTranscriptBlock buffer variables to dump values, which get pushed to transcript array as transcript blocks, at defined conditions
- * @property {string} meetingStartTimestamp ISO timestamp of when the most recent meeting started
+ * @property {string | null} meetingStartTimestamp ISO timestamp of when the most recent meeting started, or null before the platform's "meeting started" detection confirms the user has joined
  * @property {string} meetingTitle title of the most recent meeting
  * @property { Element | null} transcriptTargetNode
  * @property { MutationObserver | null} transcriptObserver

@@ -19,7 +19,12 @@ function createContentScriptState(meetingSoftware, platform) {
             transcriptTextBuffer: "",
 
         },
-        meetingStartTimestamp: new Date().toISOString(),
+        // Left unset until the platform's "meeting started" detection actually confirms
+        // the user has joined (see googleMeetRoutines()/teamsMeetingRoutines()/
+        // zoomMeetingRoutines()). Stamping "now" here would make renderFab()'s initial
+        // storage read (which runs before that detection resolves) start the FAB's live
+        // timer immediately — including while still on the pre-join lobby screen.
+        meetingStartTimestamp: null,
         meetingTitle: document.title,
         transcriptTargetNode: null,
         transcriptObserver: null,
@@ -479,7 +484,7 @@ function renderFab(onRetryCapture) {
 
         <div id="fab-timer-segment" style="background-color: black; height: 100%; display: flex; align-items: center; gap: 4px; padding: 8px 12px 8px 8px; flex-shrink: 0;">
             <img id="fab-timer-icon" src="${FAB_RECORDING_ICON_URL}" alt="" draggable="false" style="width: 24px; height: 24px; display: block;" />
-            <span id="fab-timer-text" style="color: white; font-weight: 700; font-size: 20px; line-height: 28px; white-space: nowrap; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;">0:00:00</span>
+            <span id="fab-timer-text" style="color: white; font-weight: 700; font-size: 20px; line-height: 28px; white-space: nowrap; font-variant-numeric: tabular-nums; display: inline-block; min-width: 8ch; text-align: left; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;">0:00:00</span>
         </div>
 
         <div id="fab-note-button" role="button" tabindex="0" aria-label="Add a note" title="Add a note" style="background-color: #f6f6f6; width: 48px; height: 100%; flex-shrink: 0; display: flex; align-items: center; justify-content: center; padding: 8px; cursor: pointer;">

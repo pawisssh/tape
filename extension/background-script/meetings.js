@@ -1,5 +1,7 @@
 import { downloadTranscript, postTranscriptToWebhook } from './exporters.js'
 import { getObsidianSettings, updateMeetingById, getMeetingId } from '../obsidian/store.js'
+import { getWords } from '../obsidian/dictionary.js'
+import { applyDictionaryReplacements, formatCommentNotesAsUserNotes } from './utils.js'
 
 // Two independent listeners in index.js can both observe the same meeting ending — the
 // "meeting_ended" message (sent when the user clicks the platform's own end-call button)
@@ -125,35 +127,52 @@ export function pickupLastMeetingFromStorage() {
             "meetingStartTimestamp",
             "transcript",
             "chatMessages",
+            "liveCommentNotes",
         ], function (resultUntyped) {
             const result = /** @type {ResultLocal} */ (resultUntyped)
 
             if (result.meetingStartTimestamp) {
                 if ((result.transcript.length > 0) || (result.chatMessages.length > 0)) {
-                    // Create new transcript entry
-                    /** @type {Meeting} */
-                    const newMeetingEntry = {
-                        meetingSoftware: result.meetingSoftware ? result.meetingSoftware : "",
-                        meetingTitle: result.meetingTitle,
-                        meetingStartTimestamp: result.meetingStartTimestamp,
-                        meetingEndTimestamp: new Date().toISOString(),
-                        transcript: result.transcript,
-                        chatMessages: result.chatMessages,
-                        webhookPostStatus: "new"
-                    }
+                    // Run the user's Dictionary (extension/obsidian/dictionary.js) over the
+                    // transcript before it's finalized — this is the single choke point every
+                    // downstream consumer (storage, webhook/download, LLM prompt, Obsidian
+                    // markdown) reads from afterward, so it only needs to happen once here.
+                    getWords().then((words) => {
+                        const transcript = applyDictionaryReplacements(result.transcript, words)
+                        const userNotes = formatCommentNotesAsUserNotes(result.liveCommentNotes)
 
-                    // Get existing recent meetings and add the new meeting
-                    chrome.storage.local.get(["meetings"], function (resultLocalUntyped) {
-                        const resultLocal = /** @type {ResultLocal} */ (resultLocalUntyped)
-                        let meetings = resultLocal.meetings || []
-                        meetings.push(newMeetingEntry)
+                        // Create new transcript entry
+                        /** @type {Meeting} */
+                        const newMeetingEntry = {
+                            meetingSoftware: result.meetingSoftware ? result.meetingSoftware : "",
+                            meetingTitle: result.meetingTitle,
+                            meetingStartTimestamp: result.meetingStartTimestamp,
+                            meetingEndTimestamp: new Date().toISOString(),
+                            transcript: transcript,
+                            chatMessages: result.chatMessages,
+                            webhookPostStatus: "new"
+                        }
 
-                        // Save updated meetings — kept unbounded (see manifest's
-                        // "unlimitedStorage" permission, which exempts chrome.storage.local
-                        // from its default 5MB quota so this never needs trimming).
-                        chrome.storage.local.set({ meetings: meetings }, function () {
-                            console.log("Last meeting picked up")
-                            resolve("Last meeting picked up")
+                        // Quick notes typed live via the floating widget become the meeting's
+                        // starting userNotes — the user can keep editing/appending them
+                        // post-meeting via the existing Notes tab autosave flow.
+                        if (userNotes) {
+                            newMeetingEntry.userNotes = userNotes
+                        }
+
+                        // Get existing recent meetings and add the new meeting
+                        chrome.storage.local.get(["meetings"], function (resultLocalUntyped) {
+                            const resultLocal = /** @type {ResultLocal} */ (resultLocalUntyped)
+                            let meetings = resultLocal.meetings || []
+                            meetings.push(newMeetingEntry)
+
+                            // Save updated meetings — kept unbounded (see manifest's
+                            // "unlimitedStorage" permission, which exempts chrome.storage.local
+                            // from its default 5MB quota so this never needs trimming).
+                            chrome.storage.local.set({ meetings: meetings }, function () {
+                                console.log("Last meeting picked up")
+                                resolve("Last meeting picked up")
+                            })
                         })
                     })
                 }

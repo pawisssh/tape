@@ -10,7 +10,7 @@
 // as a single opaque string rather than typed per-view since only one view uses it today.
 import { useCallback, useEffect, useState } from "react"
 
-export const VIEWS = ["meetings", "integrations", "templates", "settings"] as const
+export const VIEWS = ["meetings", "integrations", "templates", "dictionary", "settings"] as const
 export type ActiveView = (typeof VIEWS)[number]
 
 function viewFromHash(hash: string): ActiveView {

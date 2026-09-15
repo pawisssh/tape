@@ -34,7 +34,7 @@ function initTeams() {
       // Initialise new state for current meeting
       const state = createContentScriptState("Teams", "teams")
       // Push fresh state to chrome storage
-      overWriteChromeStorage(state, ["meetingSoftware", "meetingStartTimestamp", "meetingTitle", "transcript", "chatMessages"], false)
+      overWriteChromeStorage(state, ["meetingSoftware", "meetingStartTimestamp", "meetingTitle", "transcript", "chatMessages", "liveCommentNotes"], false)
 
       checkExtensionStatus(state).finally(() => {
         console.log("Extension status " + state.extensionStatusJSON.status)
@@ -147,7 +147,9 @@ function teamsMeetingRoutines(state) {
 
           // Push any data in the buffer variables to the transcript array. Needed to handle one or more speaking when meeting ends.
           pushBufferToTranscript(state)
-          // Save to chrome storage and send message to download transcript from background script
+          // Save to chrome storage and send message to download transcript from background script.
+          // Deliberately excludes "liveCommentNotes" — see the matching comment in
+          // google-meet/index.js's meeting-end handler for why.
           overWriteChromeStorage(state, ["transcript", "chatMessages"], true)
 
           unmountFab()

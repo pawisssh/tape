@@ -21,10 +21,11 @@ import { useIsCompactSidebar } from "@/hooks/use-compact-sidebar"
 import { useActiveView, type ActiveView } from "./use-active-view"
 import SidebarStatusBar from "./ui/SidebarStatusBar"
 import OperationModeToggle from "./ui/OperationModeToggle"
-import { EventNoteIcon, SpokeIcon, LayersIcon, SettingsIconMS } from "./ui/icons"
+import { EventNoteIcon, SpokeIcon, LayersIcon, MenuBookIcon, SettingsIconMS } from "./ui/icons"
 import MeetingsView from "./views/MeetingsView"
 import IntegrationsView from "./views/IntegrationsView"
 import TemplatesView from "./views/TemplatesView"
+import DictionaryView from "./views/DictionaryView"
 import SettingsView from "./views/SettingsView"
 import logoUrl from "../../assets/img-logo-tape-default.svg"
 import logoDarkUrl from "../../assets/img-logo-tape-on-dark-default.svg"
@@ -33,6 +34,7 @@ const NAV_ITEMS: { view: ActiveView; label: string; icon: typeof EventNoteIcon }
     { view: "meetings", label: "Meetings", icon: EventNoteIcon },
     { view: "integrations", label: "Integrations", icon: SpokeIcon },
     { view: "templates", label: "Templates", icon: LayersIcon },
+    { view: "dictionary", label: "Dictionary", icon: MenuBookIcon },
     { view: "settings", label: "Settings", icon: SettingsIconMS },
 ]
 
@@ -40,6 +42,7 @@ const VIEW_COMPONENTS: Record<ActiveView, React.ComponentType> = {
     meetings: MeetingsView,
     integrations: IntegrationsView,
     templates: TemplatesView,
+    dictionary: DictionaryView,
     settings: SettingsView,
 }
 

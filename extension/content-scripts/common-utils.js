@@ -11,6 +11,7 @@ function createContentScriptState(meetingSoftware, platform) {
         userName: "You",
         transcript: [],
         chatMessages: [],
+        liveCommentNotes: [],
         stateTranscriptBlock: {
             timestamp: "",
             mutationTargetElement: null,
@@ -83,7 +84,7 @@ function checkExtensionStatus(state) {
 /**
  * @description Overwrite state to chrome storage
  * @param {ContentScriptState} state
- * @param {Array<"meetingSoftware"  | "meetingTitle" | "meetingStartTimestamp" | "transcript" | "chatMessages">} keys
+ * @param {Array<"meetingSoftware"  | "meetingTitle" | "meetingStartTimestamp" | "transcript" | "chatMessages" | "liveCommentNotes">} keys
  * @param {boolean} sendDownloadMessage
  */
 function overWriteChromeStorage(state, keys, sendDownloadMessage) {
@@ -93,6 +94,7 @@ function overWriteChromeStorage(state, keys, sendDownloadMessage) {
     if (keys.includes("meetingStartTimestamp")) objectToSave.meetingStartTimestamp = state.meetingStartTimestamp
     if (keys.includes("transcript")) objectToSave.transcript = state.transcript
     if (keys.includes("chatMessages")) objectToSave.chatMessages = state.chatMessages
+    if (keys.includes("liveCommentNotes")) objectToSave.liveCommentNotes = state.liveCommentNotes
 
     chrome.storage.local.set(objectToSave, function () {
         if (sendDownloadMessage) {
@@ -328,37 +330,49 @@ function pulseStatus() {
 }
 
 function renderFab() {
+    // A plain div, not a button — the pill now hosts two independently clickable
+    // zones (open side panel / toggle note panel), and a <button> may not validly
+    // contain nested interactive descendants.
     const fabCss = `
         position: fixed;
         top: 50%;
         bottom: 50%;
         right: 8px;
-        height: 36px;
-        width: 36px;
-        border-radius: 36px;
+        height: 40px;
+        width: 76px;
+        border-radius: 20px;
         z-index: 100;
         display: flex;
         align-items: center;
-        justify-content: center;
+        justify-content: space-between;
+        gap: 4px;
         background-color: #2c2c2e;
         box-shadow: 0 0 0 1.5px #f34f16, 0px 8px 16px rgba(0,0,0,0.35);
-        cursor: pointer;
+        cursor: grab;
         border: none;
-        padding: 0;
+        padding: 0 4px;
         overflow: visible;
     `
 
     const html = document.querySelector("html")
-    const fab = document.createElement("button")
+    const fab = document.createElement("div")
     fab.id = "transcriptonic-fab"
-    fab.ariaLabel = "TranscripTonic"
     fab.title = "TranscripTonic"
     fab.style.cssText = fabCss
 
     fab.innerHTML = `
-        <div id="fab-main-content" style="display: flex; align-items: center; justify-content: center; width: 100%; height: 100%;">
+        <div id="fab-main-content" role="button" tabindex="0" aria-label="Open TranscripTonic" style="flex: 1; display: flex; align-items: center; justify-content: center; height: 32px; border-radius: 16px; cursor: pointer;">
             <img id="fab-default-logo" src="${LOGO_URL}" alt="TranscripTonic" draggable="false" style="width: 20px; height: 20px; object-fit: contain;" />
             <span id="fab-letter-mark" style="display: none; color: rgba(255,255,255,0.87); font-weight: bold; font-size: 16px; text-transform: uppercase; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;"></span>
+        </div>
+
+        <div id="fab-divider" style="width: 1px; height: 20px; flex-shrink: 0; background-color: rgba(255,255,255,0.15);"></div>
+
+        <div id="fab-note-button" role="button" tabindex="0" aria-label="Add a note" title="Add a note" style="width: 28px; height: 28px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; border-radius: 50%; cursor: pointer;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.87)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 20h9"></path>
+                <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z"></path>
+            </svg>
         </div>
 
         <img id="fab-mini-badge" src="${LOGO_URL}" alt="Active Badge" draggable="false" style="
@@ -379,10 +393,35 @@ function renderFab() {
     html?.appendChild(fab)
     makeVerticallyDraggable(fab)
 
-    fab.addEventListener("click", () => {
+    const mainContent = /** @type {HTMLElement} */ (fab.querySelector("#fab-main-content"))
+    const noteButton = /** @type {HTMLElement} */ (fab.querySelector("#fab-note-button"))
+
+    function openSidePanel() {
         /** @type {ExtensionMessage} */
         const message = { type: "open_side_panel" }
         chrome.runtime.sendMessage(message, () => { })
+    }
+
+    mainContent.addEventListener("click", openSidePanel)
+    mainContent.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault()
+            openSidePanel()
+        }
+    })
+
+    noteButton.addEventListener("mouseenter", () => { noteButton.style.backgroundColor = "rgba(255,255,255,0.1)" })
+    noteButton.addEventListener("mouseleave", () => { noteButton.style.backgroundColor = "transparent" })
+    noteButton.addEventListener("click", (e) => {
+        e.stopPropagation()
+        toggleNotePanel(fab)
+    })
+    noteButton.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault()
+            e.stopPropagation()
+            toggleNotePanel(fab)
+        }
     })
 
     // 1. Initial storage query on load
@@ -400,7 +439,146 @@ function renderFab() {
 }
 
 /**
- * @param {HTMLButtonElement} fab
+ * @description Lazily creates the (initially hidden) note-capture panel, a sibling of the
+ * FAB rather than a child of it, so it can be positioned independently and isn't affected
+ * by the FAB's drag handling. Idempotent — returns the existing panel on repeat calls.
+ * @returns {HTMLElement}
+ */
+function renderNotePanel() {
+    const existing = document.querySelector("#transcriptonic-note-panel")
+    if (existing) return /** @type {HTMLElement} */ (existing)
+
+    const panelCss = `
+        position: fixed;
+        display: none;
+        flex-direction: column;
+        gap: 8px;
+        width: 220px;
+        padding: 10px;
+        border-radius: 12px;
+        z-index: 100;
+        background-color: #2c2c2e;
+        box-shadow: 0 0 0 1.5px #f34f16, 0px 8px 16px rgba(0,0,0,0.35);
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
+    `
+
+    const panel = document.createElement("div")
+    panel.id = "transcriptonic-note-panel"
+    panel.style.cssText = panelCss
+    panel.innerHTML = `
+        <textarea id="transcriptonic-note-input" placeholder="Add a note…" rows="3" style="
+            resize: none;
+            border: none;
+            outline: none;
+            border-radius: 8px;
+            padding: 8px;
+            background-color: rgba(255,255,255,0.08);
+            color: rgba(255,255,255,0.87);
+            font-size: 13px;
+            font-family: inherit;
+        "></textarea>
+        <div style="display: flex; align-items: center; justify-content: flex-end; gap: 8px;">
+            <span id="transcriptonic-note-confirmation" style="display: none; color: #6fcf97; font-size: 12px;">Saved</span>
+            <button id="transcriptonic-note-save" style="
+                border: none;
+                border-radius: 8px;
+                padding: 6px 12px;
+                background-color: #f34f16;
+                color: white;
+                font-size: 12px;
+                font-weight: 600;
+                cursor: pointer;
+            ">Save</button>
+        </div>
+    `
+
+    document.querySelector("html")?.appendChild(panel)
+
+    const textarea = /** @type {HTMLTextAreaElement} */ (panel.querySelector("#transcriptonic-note-input"))
+    const saveButton = /** @type {HTMLButtonElement} */ (panel.querySelector("#transcriptonic-note-save"))
+    const confirmation = /** @type {HTMLElement} */ (panel.querySelector("#transcriptonic-note-confirmation"))
+
+    function saveNote() {
+        const text = textarea.value.trim()
+        if (!text) {
+            closeNotePanel()
+            return
+        }
+        chrome.storage.local.get(["liveCommentNotes"], (resultUntyped) => {
+            const result = /** @type {ResultLocal} */ (resultUntyped)
+            const liveCommentNotes = (result.liveCommentNotes || []).concat([
+                { timestamp: new Date().toISOString(), text }
+            ])
+            chrome.storage.local.set({ liveCommentNotes }, () => {
+                textarea.value = ""
+                confirmation.style.display = "inline"
+                setTimeout(() => {
+                    confirmation.style.display = "none"
+                    closeNotePanel()
+                }, 800)
+            })
+        })
+    }
+
+    saveButton.addEventListener("click", (e) => {
+        e.stopPropagation()
+        saveNote()
+    })
+
+    // Don't let typing/clicking in the textarea reach the FAB's drag/click handling —
+    // the panel is a sibling of the FAB, not a descendant, so this is only needed for
+    // mousedown/click bubbling up to `document`'s click-away listener below.
+    textarea.addEventListener("mousedown", (e) => e.stopPropagation())
+    textarea.addEventListener("click", (e) => e.stopPropagation())
+    textarea.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" && !e.shiftKey) {
+            e.preventDefault()
+            saveNote()
+        }
+        else if (e.key === "Escape") {
+            closeNotePanel()
+        }
+        e.stopPropagation()
+    })
+
+    // Click-away to close
+    document.addEventListener("mousedown", (e) => {
+        const target = /** @type {Element} */ (e.target)
+        if (panel.style.display !== "none" && !panel.contains(target) && !target.closest("#fab-note-button")) {
+            closeNotePanel()
+        }
+    })
+
+    return panel
+}
+
+function closeNotePanel() {
+    const panel = document.querySelector("#transcriptonic-note-panel")
+    if (panel) /** @type {HTMLElement} */ (panel).style.display = "none"
+}
+
+/**
+ * @param {HTMLElement} fab
+ */
+function toggleNotePanel(fab) {
+    const panel = renderNotePanel()
+    const isOpen = panel.style.display !== "none"
+    if (isOpen) {
+        closeNotePanel()
+        return
+    }
+
+    const fabRect = fab.getBoundingClientRect()
+    panel.style.top = `${fabRect.bottom + 8}px`
+    panel.style.right = `${window.innerWidth - fabRect.right}px`
+    panel.style.display = "flex"
+
+    const textarea = /** @type {HTMLTextAreaElement} */ (panel.querySelector("#transcriptonic-note-input"))
+    textarea.focus()
+}
+
+/**
+ * @param {HTMLElement} fab
  */
 function makeVerticallyDraggable(fab) {
     let isDragging = false
@@ -504,6 +682,10 @@ function unmountFab() {
     const fab = document.querySelector("#transcriptonic-fab")
     if (fab) {
         fab.remove()
+    }
+    const notePanel = document.querySelector("#transcriptonic-note-panel")
+    if (notePanel) {
+        notePanel.remove()
     }
 }
 

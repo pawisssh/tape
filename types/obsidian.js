@@ -79,6 +79,22 @@
  */
 
 /**
+ * @typedef {Object} DictionaryCategory A user-defined group of DictionaryEntry records, persisted in chrome.storage.sync (see extension/obsidian/dictionary.js).
+ * @property {string} id Stable id (crypto.randomUUID()), assigned on first save. The reserved id "uncategorized" is a built-in category that always exists, is never itself persisted, and cannot be renamed or deleted.
+ * @property {string} name Display name shown in the Dictionary list.
+ * @property {string} createdAt ISO timestamp, set once on first save. The built-in "uncategorized" category uses an empty string since it's never actually saved.
+ */
+/**
+ * @typedef {Object} DictionaryEntry One user-defined word -> optional-replacement pair, persisted in chrome.storage.sync (see extension/obsidian/dictionary.js) — used by applyDictionaryReplacements() (extension/background-script/utils.js) to fix commonly mis-transcribed words/names/jargon before a meeting's transcript is stored.
+ * @property {string} id Stable id (crypto.randomUUID()), assigned on first save.
+ * @property {string} word The (possibly mis-transcribed) word or phrase to match, case-insensitively, as a whole word.
+ * @property {string} [replacement] Optional. Empty/absent means this entry is reference-only and is skipped entirely by applyDictionaryReplacements().
+ * @property {string} categoryId A DictionaryCategory id, or the reserved "uncategorized".
+ * @property {string} createdAt ISO timestamp, set once on first save.
+ * @property {string} updatedAt ISO timestamp, refreshed on every save.
+ */
+
+/**
  * @typedef {Object} ObsidianSettings
  * @property {AutoSaveToObsidianAfterMeeting} autoSaveToObsidianAfterMeeting
  * @property {ObsidianVaultName} obsidianVaultName

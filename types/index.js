@@ -76,6 +76,15 @@
  */
 
 /**
+ * @typedef {Object} CommentNoteEntry A quick note the user typed during the meeting via the
+ * floating widget's note panel (see extension/content-scripts/common-utils.js's renderFab()).
+ * Merged into the finalized meeting's userNotes at meeting end — see
+ * formatCommentNotesAsUserNotes() in extension/background-script/utils.js.
+ * @property {string} timestamp ISO timestamp of when the note was saved
+ * @property {string} text the note text
+ */
+
+/**
  * @typedef {Object} WebhookBody
  * @property {"simple" | "advanced"} webhookBodyType simple or advanced
  * @property {MeetingSoftware} meetingSoftware
@@ -125,6 +134,7 @@
  * @property {string} userName
  * @property {TranscriptBlock[]} transcript array containing transcript blocks from the meeting
  * @property {ChatMessage[]} chatMessages array containing chat messages from the meeting
+ * @property {CommentNoteEntry[]} liveCommentNotes quick notes typed via the floating widget's note panel during the meeting
  * @property {StateTranscriptBlock} stateTranscriptBlock buffer variables to dump values, which get pushed to transcript array as transcript blocks, at defined conditions
  * @property {string} meetingStartTimestamp ISO timestamp of when the most recent meeting started
  * @property {string} meetingTitle title of the most recent meeting
@@ -172,6 +182,7 @@
  * @property {MeetingStartTimestamp} meetingStartTimestamp
  * @property {Transcript} transcript
  * @property {ChatMessages} chatMessages
+ * @property {CommentNoteEntry[] | undefined} liveCommentNotes quick notes typed via the floating widget's note panel during the current meeting, dumped by content script
  * @property {IsDeferredUpdatedAvailable | undefined} isDeferredUpdatedAvailable
  * @property {Meeting[] | undefined} meetings
  * @property {LlmProviderConfig[] | undefined} obsidianLlmProviders saved LLM connectors (see extension/obsidian/providers.js) — local, not sync, since apiKey is a secret
@@ -198,6 +209,8 @@
  * @property {ObsidianLlmAutoRun | undefined} obsidianLlmAutoRun
  * @property {SummaryTemplate[] | undefined} obsidianLlmSummaryTemplates
  * @property {ObsidianLlmSystemPrompt | undefined} obsidianLlmSystemPrompt
+ * @property {DictionaryCategory[] | undefined} obsidianDictionaryCategories
+ * @property {DictionaryEntry[] | undefined} obsidianDictionaryWords
 */
 
 

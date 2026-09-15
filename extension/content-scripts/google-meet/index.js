@@ -16,7 +16,7 @@ function initGoogleMeet() {
         // Initialise new state for current meeting
         const state = createContentScriptState("Google Meet", "google_meet")
         // Push fresh state to chrome storage
-        overWriteChromeStorage(state, ["meetingSoftware", "meetingStartTimestamp", "meetingTitle", "transcript", "chatMessages"], false)
+        overWriteChromeStorage(state, ["meetingSoftware", "meetingStartTimestamp", "meetingTitle", "transcript", "chatMessages", "liveCommentNotes"], false)
 
         checkExtensionStatus(state).finally(() => {
             console.log("Extension status " + state.extensionStatusJSON.status)
@@ -176,7 +176,13 @@ function googleMeetRoutines(state) {
 
                 // Push any data in the buffer variables to the transcript array. Needed to handle one or more speaking when meeting ends.
                 pushBufferToTranscript(state)
-                // Save to chrome storage and send message to download transcript from background script
+                // Save to chrome storage and send message to download transcript from background script.
+                // Deliberately excludes "liveCommentNotes" — unlike transcript/chatMessages,
+                // state.liveCommentNotes is never kept in sync with storage (the floating
+                // widget's note panel writes straight to chrome.storage.local, bypassing
+                // `state` entirely), so re-flushing it here would overwrite the real saved
+                // notes with the always-empty in-memory array right before the background
+                // script reads them to finalize the meeting.
                 overWriteChromeStorage(state, ["transcript", "chatMessages"], true)
 
                 unmountFab()

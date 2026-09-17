@@ -154,9 +154,6 @@ function zoomMeetingRoutines(state) {
                         //*********** MEETING START ROUTINES **********//
                         updateMeetingTitle(state)
 
-                        // Ask user to switch on captions
-                        showNotificationZoom(state.extensionStatusJSON)
-
                         // **** REGISTER TRANSCRIPT LISTENER **** //
                         attachTranscriptListenerZoom(state, iframe)
                         // waitForElement() never times out on its own — it polls forever — so

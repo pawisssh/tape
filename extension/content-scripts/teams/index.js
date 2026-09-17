@@ -139,14 +139,11 @@ function teamsMeetingRoutines(state) {
       const resultSync = /** @type {ResultSync} */ (resultSyncUntyped)
       if (resultSync.operationMode === "manual") {
         console.log("Manual mode selected, leaving transcript off")
-        showNotificationTeams({ status: 400, message: "<strong>TranscripTonic is not running</strong> <br /> Turn on captions, if needed (More > Language > Captions)" })
       }
       else {
         // Allow keyboard event listener to be ready
         setTimeout(() => {
           dispatchLiveCaptionsShortcut()
-          // Show message to enable because keyboard shortcut does not work in guest meetings
-          showNotificationTeams(state.extensionStatusJSON)
         }, 2000)
       }
     })

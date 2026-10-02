@@ -58,7 +58,7 @@ export default function App() {
             <div className="mb-5 flex items-center gap-3">
                 <img className="size-10 rounded-xl" src={iconUrl} alt="" />
                 <div>
-                    <h1 className="font-meetings-heading text-lg text-meetings-ink">TranscripTonic</h1>
+                    <h1 className="font-meetings-heading text-lg text-meetings-ink">Tape</h1>
                     <p className="text-meetings-ink-muted">Simple Google Meet transcripts. Private and open source.</p>
                 </div>
             </div>
@@ -150,7 +150,7 @@ export default function App() {
                     <img className="h-6 w-auto" src={notionIcon} alt="Notion logo" />
                 </div>
                 <p className="text-meetings-ink">
-                    You can integrate TranscripTonic with your favourite tools like{" "}
+                    You can integrate Tape with your favourite tools like{" "}
                     <b>Google Docs, Notion, n8n and more</b> using{" "}
                     <button
                         type="button"
@@ -169,7 +169,7 @@ export default function App() {
                 <div>
                     <a
                         className="text-meetings-ink-muted underline decoration-meetings-border underline-offset-4 hover:text-meetings-ink"
-                        href="https://github.com/vivek-nexus/transcriptonic#readme"
+                        href="https://github.com/pawisssh/tape#readme"
                         target="_blank"
                         rel="noreferrer"
                     >
@@ -178,7 +178,7 @@ export default function App() {
                     <span className="mx-2">&#9679;</span>
                     <a
                         className="text-meetings-ink-muted underline decoration-meetings-border underline-offset-4 hover:text-meetings-ink"
-                        href="https://github.com/vivek-nexus/transcriptonic/issues"
+                        href="https://github.com/pawisssh/tape/issues"
                         target="_blank"
                         rel="noreferrer"
                     >
@@ -192,7 +192,7 @@ export default function App() {
                     v{version} /{" "}
                     <a
                         className="text-meetings-ink-muted underline decoration-meetings-border underline-offset-4 hover:text-meetings-ink"
-                        href="https://github.com/vivek-nexus/transcriptonic?tab=readme-ov-file#notice"
+                        href="https://github.com/pawisssh/tape?tab=readme-ov-file#notice"
                         target="_blank"
                         rel="noreferrer"
                     >

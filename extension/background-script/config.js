@@ -15,6 +15,7 @@ export const PLATFORM_CONFIGS = {
         js: [
             "content-scripts/common-config.js",
             "content-scripts/common-utils.js",
+            "content-scripts/live-panel.js",
             "content-scripts/google-meet/config.js",
             "content-scripts/google-meet/utils.js",
             "content-scripts/google-meet/index.js"
@@ -28,6 +29,7 @@ export const PLATFORM_CONFIGS = {
         js: [
             "content-scripts/common-config.js",
             "content-scripts/common-utils.js",
+            "content-scripts/live-panel.js",
             "content-scripts/teams/config.js",
             "content-scripts/teams/utils.js",
             "content-scripts/teams/index.js"
@@ -41,6 +43,7 @@ export const PLATFORM_CONFIGS = {
         js: [
             "content-scripts/common-config.js",
             "content-scripts/common-utils.js",
+            "content-scripts/live-panel.js",
             "content-scripts/zoom/config.js",
             "content-scripts/zoom/utils.js",
             "content-scripts/zoom/index.js"

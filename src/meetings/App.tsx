@@ -163,7 +163,7 @@ export default function App() {
                 <SidebarInset className="overflow-hidden">
                     <header className="flex shrink-0 items-center gap-2 border-b p-3 md:hidden">
                         <SidebarTrigger />
-                        <span className="font-heading text-sm font-bold">TranscripTonic</span>
+                        <span className="font-heading text-sm font-bold">Tape</span>
                     </header>
                     <main className="min-h-0 w-full flex-1 overflow-hidden">
                         {activeView === "integrations" ? (

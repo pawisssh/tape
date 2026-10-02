@@ -1,3 +1,7 @@
+/** @type {ContentScriptState | null} */
+let currentLiveMeetingState = null
+let liveSnapshotListenerInstalled = false
+
 /**
  * @description State Factory: Returns a pristine, isolated meeting state block.
  * @param {MeetingSoftware} meetingSoftware
@@ -5,7 +9,8 @@
  * @returns {ContentScriptState}
  */
 function createContentScriptState(meetingSoftware, platform) {
-    return {
+    /** @type {ContentScriptState} */
+    const state = {
         meetingSoftware: meetingSoftware,
         platform: platform,
         userName: "You",
@@ -37,8 +42,96 @@ function createContentScriptState(meetingSoftware, platform) {
         zoomIframe: null,
         extensionStatusJSON: {
             status: 200,
-            message: "<strong>TranscripTonic is running</strong> <br /> Do not turn off captions"
+            message: "<strong>Tape is running</strong> <br /> Do not turn off captions"
         }
+    }
+    currentLiveMeetingState = state
+    if (!liveSnapshotListenerInstalled) {
+        chrome.runtime.onMessage.addListener((message, _sender, respond) => {
+            const active = currentLiveMeetingState
+            if (message.type === "get_live_snapshot" && active?.hasMeetingStarted && !active.hasMeetingEnded) {
+                respond(getLiveSnapshot(active, message.mode))
+            }
+        })
+        liveSnapshotListenerInstalled = true
+    }
+    return state
+}
+
+// Store caption deltas with arrival times: block timestamps alone cannot represent
+// a 15-second window when the same speaker talks for several minutes.
+/** @type {WeakMap<ContentScriptState, {key: string, text: string, entries: (TranscriptBlock & {blockKey: string, offset: number})[]}>} */
+const liveRewindBuffers = new WeakMap()
+
+/** @param {ContentScriptState} state @param {number} [now] */
+function trackLiveCaption(state, now = Date.now()) {
+    const block = state.stateTranscriptBlock
+    const buffer = liveRewindBuffers.get(state) || { key: "", text: "", entries: [] }
+    const key = block.personName + "\n" + block.timestamp
+    const text = block.transcriptTextBuffer
+    let delta = text
+    let offset = 0
+    if (key === buffer.key) {
+        let prefix = 0
+        while (prefix < text.length && prefix < buffer.text.length && text[prefix] === buffer.text[prefix]) prefix++
+        offset = prefix
+        // A caption correction replaces the old suffix, rather than presenting both
+        // the incorrect and corrected words as if the speaker said them twice.
+        if (prefix < buffer.text.length) {
+            buffer.entries = buffer.entries.flatMap(entry => {
+                if (entry.blockKey !== key) return [entry]
+                const kept = entry.transcriptText.slice(0, Math.max(0, prefix - entry.offset))
+                return kept ? [{ ...entry, transcriptText: kept }] : []
+            })
+        }
+        delta = text.slice(prefix)
+    }
+    if (delta) buffer.entries.push({
+        blockKey: key,
+        offset,
+        personName: block.personName === "You" ? state.userName : block.personName,
+        timestamp: new Date(now).toISOString(),
+        transcriptText: delta,
+    })
+    buffer.key = key
+    buffer.text = text
+    buffer.entries = buffer.entries.filter(entry => Date.parse(entry.timestamp) >= now - 15000)
+    liveRewindBuffers.set(state, buffer)
+}
+
+/** @param {ContentScriptState} state @param {"rewind" | "recap"} mode @param {number} [now] */
+function getLiveSnapshot(state, mode, now = Date.now()) {
+    trackLiveCaption(state, now)
+    const block = state.stateTranscriptBlock
+    /** @type {TranscriptBlock[]} */
+    const transcript = []
+    if (mode === "rewind") {
+        let previousKey = ""
+        for (const entry of liveRewindBuffers.get(state)?.entries || []) {
+            if (entry.blockKey === previousKey && transcript.length) {
+                transcript[transcript.length - 1].transcriptText += entry.transcriptText
+            } else {
+                transcript.push({ personName: entry.personName, timestamp: entry.timestamp, transcriptText: entry.transcriptText })
+            }
+            previousKey = entry.blockKey
+        }
+        for (const entry of transcript) entry.transcriptText = entry.transcriptText.trim()
+    } else {
+        transcript.push(...state.transcript)
+        if (block.transcriptTextBuffer.trim()) transcript.push({
+            personName: block.personName === "You" ? state.userName : block.personName,
+            timestamp: block.timestamp,
+            transcriptText: block.transcriptTextBuffer,
+        })
+    }
+    return {
+        meetingSoftware: state.meetingSoftware,
+        meetingTitle: state.meetingTitle,
+        meetingStartTimestamp: state.meetingStartTimestamp,
+        meetingEndTimestamp: new Date(now).toISOString(),
+        transcript: transcript.filter(entry => entry.transcriptText.trim()),
+        chatMessages: [],
+        webhookPostStatus: "new",
     }
 }
 
@@ -66,7 +159,7 @@ function checkExtensionStatus(state) {
                 // Disable extension if version is below the min version
                 if (!meetsMinVersion(chrome.runtime.getManifest().version, minVersion)) {
                     state.extensionStatusJSON.status = 400
-                    state.extensionStatusJSON.message = `<strong>TranscripTonic is not running</strong> <br /> Please update to v${minVersion} by following <a href="https://github.com/vivek-nexus/transcriptonic/wiki/Manually-update-TranscripTonic" target="_blank">these instructions</a>`
+                    state.extensionStatusJSON.message = `<strong>Tape is not running</strong> <br /> Please update to v${minVersion} by following <a href="https://github.com/pawisssh/tape#installation" target="_blank">these instructions</a>`
                 }
                 else {
                     // Update status based on response
@@ -270,6 +363,8 @@ function startTranscriptMonitor(state) {
  * @param {ContentScriptState} state
  */
 function broadcastLiveBuffer(state) {
+    trackLiveCaption(state)
+    liveMeetingPanel?.refresh()
     /** @type {ExtensionMessage} */
     const message = {
         type: "broadcast_live_buffer",
@@ -287,6 +382,7 @@ function broadcastLiveBuffer(state) {
  * @param {ContentScriptState} state
  */
 function pushBufferToTranscript(state) {
+    trackLiveCaption(state)
     if ((state.stateTranscriptBlock.personName !== "") && (state.stateTranscriptBlock.transcriptTextBuffer !== "")) {
         state.transcript.push({
             "personName": state.stateTranscriptBlock.personName === "You" ? state.userName : state.stateTranscriptBlock.personName,
@@ -318,11 +414,11 @@ function pulseStatus() {
     transition: background-color 0.3s ease-in
   `
     /** @type {HTMLDivElement | null}*/
-    let activityStatus = document.querySelector(`#transcriptonic-status`)
+    let activityStatus = document.querySelector(`#tape-status`)
     if (!activityStatus) {
         let html = document.querySelector("html")
         activityStatus = document.createElement("div")
-        activityStatus.setAttribute("id", "transcriptonic-status")
+        activityStatus.setAttribute("id", "tape-status")
         activityStatus.style.cssText = `background-color: #2A9ACA; ${statusActivityCSS}`
         html?.appendChild(activityStatus)
     }
@@ -334,6 +430,9 @@ function pulseStatus() {
         activityStatus.style.cssText = `background-color: transparent; ${statusActivityCSS}`
     }, 3000)
 }
+
+/** @type {(() => void) | null} */
+let fabResizeHandler = null
 
 /** Handle for the FAB's live elapsed-timer interval, shared between renderFab() and unmountFab(). */
 let fabTimerIntervalId = null
@@ -358,7 +457,16 @@ function formatElapsedTime(startIso) {
 function startFabTimer(fab, startIso) {
     if (fabTimerIntervalId) clearInterval(fabTimerIntervalId)
     const timerText = fab.querySelector("#fab-timer-text")
-    const tick = () => { if (timerText) timerText.textContent = formatElapsedTime(startIso) }
+    const tick = () => {
+        if (!timerText) return
+        timerText.textContent = formatElapsedTime(startIso)
+        // The timer grows naturally when the hour gains another digit. Keep a FAB
+        // parked at the viewport edge visible when that happens.
+        if (fabHasJoined) {
+            const rect = fab.getBoundingClientRect()
+            if (rect.right > window.innerWidth - 8) fab.style.left = `${Math.max(0, rect.left - (rect.right - window.innerWidth + 8))}px`
+        }
+    }
     tick()
     fabTimerIntervalId = setInterval(tick, 1000)
 }
@@ -370,7 +478,7 @@ function startFabTimer(fab, startIso) {
  * @param {boolean} isRecording
  */
 function setFabRecordingState(isRecording) {
-    const fab = /** @type {HTMLElement | null} */ (document.querySelector("#transcriptonic-fab"))
+    const fab = /** @type {HTMLElement | null} */ (document.querySelector("#tape-fab"))
     if (!fab) return
 
     const brandSegment = /** @type {HTMLElement} */ (fab.querySelector("#fab-brand-segment"))
@@ -415,7 +523,7 @@ let fabHasJoined = false
 
 /**
  * @description One-way transition from the FAB's compact pre-join look (Figma node
- * 2048:28 — just the brand and menu segments) to the full 4-segment recording look
+ * 2048:28 — just the brand and menu segments) to the full recording look
  * (2043:460). Called once, right where each platform confirms the user has actually
  * joined the meeting (state.hasMeetingStarted = true). Idempotent — a second call is
  * a no-op, mirroring markCaptureFailed()/markCaptureRecovered()'s guard pattern.
@@ -425,14 +533,18 @@ function setFabJoinedState(hasJoined) {
     if (!hasJoined || fabHasJoined) return
     fabHasJoined = true
 
-    const fab = /** @type {HTMLElement | null} */ (document.querySelector("#transcriptonic-fab"))
+    const fab = /** @type {HTMLElement | null} */ (document.querySelector("#tape-fab"))
     if (!fab) return
 
     // Keep the FAB's right edge visually anchored while it grows — otherwise a FAB
-    // dragged near the right edge of the screen would spill off-screen as the timer
-    // and note segments expand. left/top aren't in the FAB's own transition list, so
-    // this shift is instant while the interior segments animate.
-    const widthDelta = FAB_TIMER_SEGMENT_WIDTH_PX + FAB_NOTE_SEGMENT_WIDTH_PX
+    // dragged near the right edge of the screen would spill off-screen as its timer,
+    // note, Rewind, and Recap segments expand. The FAB's left/top do not animate,
+    // so this shift is instant while the interior segments animate.
+    const timerText = /** @type {HTMLElement | null} */ (fab.querySelector("#fab-timer-text"))
+    const timerContentWidth = timerText?.scrollWidth ? 28 + timerText.scrollWidth : 108
+    const widthDelta = (window.innerWidth > 319 ? timerContentWidth + 20 : 0)
+        + (window.innerWidth > 399 ? FAB_NOTE_SEGMENT_WIDTH_PX + 16 : 0)
+        + (window.innerWidth > 499 ? (FAB_ASSIST_SEGMENT_WIDTH_PX + 16) * 2 : 0)
     const currentLeft = fab.getBoundingClientRect().left
     const expandedFabWidth = fab.offsetWidth + widthDelta
     const maxLeft = Math.max(0, window.innerWidth - expandedFabWidth)
@@ -450,10 +562,21 @@ function setFabJoinedState(hasJoined) {
 
     const timerSegment = /** @type {HTMLElement} */ (fab.querySelector("#fab-timer-segment"))
     if (timerSegment) {
-        timerSegment.style.width = `${FAB_TIMER_SEGMENT_WIDTH_PX}px`
+        timerSegment.style.maxWidth = "240px"
         timerSegment.style.padding = "8px 12px 8px 8px"
         timerSegment.style.opacity = "1"
         timerSegment.style.pointerEvents = "auto"
+    }
+
+    for (const mode of ["rewind", "recap"]) {
+        const button = /** @type {HTMLButtonElement | null} */ (fab.querySelector(`#fab-${mode}-button`))
+        if (!button) continue
+        button.disabled = false
+        button.removeAttribute("aria-hidden")
+        button.style.width = `${FAB_ASSIST_SEGMENT_WIDTH_PX}px`
+        button.style.padding = "8px"
+        button.style.opacity = "1"
+        button.style.pointerEvents = "auto"
     }
 
     const brandSegment = /** @type {HTMLElement} */ (fab.querySelector("#fab-brand-segment"))
@@ -504,12 +627,10 @@ function scheduleCaptureFailureDeadline(state) {
     }, 15000)
 }
 
-/** Expanded pixel width of #fab-timer-segment / #fab-note-button once joined — kept as
- * named constants (rather than intrinsic/auto sizing) so the collapse/expand transition
- * and the drag right-edge-anchoring math in makeFabDraggable() use the same numbers and
- * can't drift apart. */
-const FAB_TIMER_SEGMENT_WIDTH_PX = 136
+/** Content widths used by the joined FAB segments. setFabJoinedState() includes
+ * each segment's horizontal padding when anchoring the expanded FAB. */
 const FAB_NOTE_SEGMENT_WIDTH_PX = 48
+const FAB_ASSIST_SEGMENT_WIDTH_PX = 48
 
 /**
  * @param {() => void} [onRetryCapture] Called when the user clicks/activates the
@@ -517,6 +638,21 @@ const FAB_NOTE_SEGMENT_WIDTH_PX = 48
  * is in its not-recording look — role/tabindex are only exposed then).
  */
 function renderFab(onRetryCapture) {
+    const responsiveStyle = document.createElement("style")
+    responsiveStyle.id = "tape-fab-responsive"
+    responsiveStyle.textContent = `
+        @media (max-width: 499px) {
+            #tape-fab #fab-rewind-button,
+            #tape-fab #fab-recap-button { display: none !important; }
+        }
+        @media (max-width: 399px) {
+            #tape-fab #fab-note-button { display: none !important; }
+        }
+        @media (max-width: 319px) {
+            #tape-fab #fab-timer-segment { display: none !important; }
+        }
+    `
+    document.documentElement.appendChild(responsiveStyle)
     const fabCss = `
         position: fixed;
         top: 50%;
@@ -538,27 +674,30 @@ function renderFab(onRetryCapture) {
 
     const html = document.querySelector("html")
     const fab = document.createElement("div")
-    fab.id = "transcriptonic-fab"
-    fab.title = "TranscripTonic"
+    fab.id = "tape-fab"
+    fab.title = "Tape"
     fab.style.cssText = fabCss
 
     // Default look is the pre-join "not yet joined" state (Figma node 2048:28): just
     // the brand segment (light bg, idle dark logo, hairline right divider) and the menu
-    // segment. The timer and note segments are already in the DOM but start collapsed
+    // segment. The timer, note, Rewind, and Recap segments start collapsed
     // (zero width/padding/opacity, non-interactive) — setFabJoinedState(true) expands
     // them once the platform's real "meeting started" signal fires. Keeping a single
     // persistent DOM tree (rather than swapping in a second markup tree) lets every
-    // existing handler below (click/keydown wiring, setFabRecordingState, startFabTimer,
-    // toggleNotePanel) keep targeting these same elements unmodified.
+    // existing handler below (click/keydown wiring, setFabRecordingState and startFabTimer)
+    // keep targeting these same elements.
     fab.innerHTML = `
-        <div id="fab-brand-segment" role="button" tabindex="0" aria-label="Open TranscripTonic" style="background-color: #f6f6f6; height: 100%; display: flex; align-items: center; padding: 8px 12px; flex-shrink: 0; cursor: pointer; border-right: 1px solid rgba(0,0,0,0.12); transition: border-color 200ms ease;">
+        <div id="fab-brand-segment" role="button" tabindex="0" aria-label="Open Tape" style="background-color: #f6f6f6; height: 100%; display: flex; align-items: center; padding: 8px 12px; flex-shrink: 0; cursor: pointer; border-right: 1px solid rgba(0,0,0,0.12); transition: border-color 200ms ease;">
             <img id="fab-brand-mark" src="${FAB_BRAND_MARK_IDLE_URL}" alt="" draggable="false" style="width: 44px; height: 20px; object-fit: contain; display: block;" />
         </div>
 
-        <div id="fab-timer-segment" style="background-color: black; height: 100%; display: flex; align-items: center; gap: 4px; padding: 0; flex-shrink: 0; width: 0; opacity: 0; overflow: hidden; pointer-events: none; transition: width 240ms ease, padding 240ms ease, opacity 200ms ease;">
+        <div id="fab-timer-segment" style="background-color: black; height: 100%; display: flex; align-items: center; gap: 4px; padding: 0; flex-shrink: 0; width: max-content; max-width: 0; opacity: 0; overflow: hidden; pointer-events: none; transition: max-width 240ms ease, padding 240ms ease, opacity 200ms ease;">
             <img id="fab-timer-icon" src="${FAB_RECORDING_ICON_URL}" alt="" draggable="false" style="width: 24px; height: 24px; display: block; flex-shrink: 0;" />
-            <span id="fab-timer-text" style="color: white; font-weight: 700; font-size: 20px; line-height: 28px; white-space: nowrap; font-variant-numeric: tabular-nums; display: inline-block; min-width: 8ch; text-align: left; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;">0:00:00</span>
+            <span id="fab-timer-text" style="color: white; font-weight: 700; font-size: 20px; line-height: 28px; white-space: nowrap; font-variant-numeric: tabular-nums; display: inline-block; text-align: left; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;">0:00:00</span>
         </div>
+
+        <button id="fab-rewind-button" disabled aria-hidden="true" aria-label="Rewind the last 15 seconds" title="Recall the last 15 seconds" style="appearance:none; box-sizing:content-box; height:100%; width:0; margin:0; border:0; border-radius:0; padding:0; background:#f6f6f6; display:flex; align-items:center; justify-content:center; flex-shrink:0; opacity:0; overflow:hidden; pointer-events:none; cursor:pointer; transition:width 240ms ease, padding 240ms ease, opacity 200ms ease;"><img src="${FAB_REWIND_ICON_URL}" alt="" draggable="false" style="width:24px; height:24px; display:block; flex-shrink:0;" /></button>
+        <button id="fab-recap-button" disabled aria-hidden="true" aria-label="Recap the meeting so far" title="Summarize the meeting so far" style="appearance:none; box-sizing:content-box; height:100%; width:0; margin:0; border:0; border-radius:0; padding:0; background:#f6f6f6; display:flex; align-items:center; justify-content:center; flex-shrink:0; opacity:0; overflow:hidden; pointer-events:none; cursor:pointer; transition:width 240ms ease, padding 240ms ease, opacity 200ms ease;"><img src="${FAB_RECAP_ICON_URL}" alt="" draggable="false" style="width:24px; height:24px; display:block; flex-shrink:0;" /></button>
 
         <div id="fab-note-button" role="button" tabindex="-1" aria-hidden="true" aria-label="Add a note" title="Add a note" style="background-color: #f6f6f6; width: 0; height: 100%; flex-shrink: 0; display: flex; align-items: center; justify-content: center; padding: 0; opacity: 0; overflow: hidden; pointer-events: none; cursor: pointer; transition: width 240ms ease, padding 240ms ease, opacity 200ms ease;">
             <img src="${FAB_NOTE_ICON_URL}" alt="" draggable="false" style="width: 24px; height: 24px; display: block; flex-shrink: 0;" />
@@ -572,23 +711,38 @@ function renderFab(onRetryCapture) {
     html?.appendChild(fab)
     positionFab(fab)
     makeFabDraggable(fab)
+    fabResizeHandler = () => {
+        const rect = fab.getBoundingClientRect()
+        const position = getFabViewportPosition(rect, window.innerWidth, window.innerHeight)
+        fab.style.left = `${position.left}px`
+        fab.style.top = `${position.top}px`
+    }
+    window.addEventListener("resize", fabResizeHandler)
 
     const brandSegment = /** @type {HTMLElement} */ (fab.querySelector("#fab-brand-segment"))
     const timerSegment = /** @type {HTMLElement} */ (fab.querySelector("#fab-timer-segment"))
     const noteButton = /** @type {HTMLElement} */ (fab.querySelector("#fab-note-button"))
     const menuButton = /** @type {HTMLElement} */ (fab.querySelector("#fab-menu-button"))
 
-    function openSidePanel() {
-        /** @type {ExtensionMessage} */
-        const message = { type: "open_side_panel" }
-        chrome.runtime.sendMessage(message, () => { })
+    function openLivePanel() {
+        toggleLiveMeetingPanel(fab)
     }
 
-    brandSegment.addEventListener("click", openSidePanel)
+    for (const mode of ["rewind", "recap"]) {
+        const button = /** @type {HTMLButtonElement | null} */ (fab.querySelector(`#fab-${mode}-button`))
+        button?.addEventListener("mouseenter", () => { button.style.filter = "brightness(0.95)" })
+        button?.addEventListener("mouseleave", () => { button.style.filter = "none" })
+        button?.addEventListener("click", (event) => {
+            event.stopPropagation()
+            toggleLiveMeetingPanel(fab, /** @type {"rewind" | "recap"} */ (mode))
+        })
+    }
+
+    brandSegment.addEventListener("click", openLivePanel)
     brandSegment.addEventListener("keydown", (e) => {
         if (e.key === "Enter" || e.key === " ") {
             e.preventDefault()
-            openSidePanel()
+            openLivePanel()
         }
     })
 
@@ -596,13 +750,13 @@ function renderFab(onRetryCapture) {
     noteButton.addEventListener("mouseleave", () => { noteButton.style.filter = "none" })
     noteButton.addEventListener("click", (e) => {
         e.stopPropagation()
-        toggleNotePanel(fab)
+        toggleLiveMeetingPanel(fab, "note")
     })
     noteButton.addEventListener("keydown", (e) => {
         if (e.key === "Enter" || e.key === " ") {
             e.preventDefault()
             e.stopPropagation()
-            toggleNotePanel(fab)
+            toggleLiveMeetingPanel(fab, "note")
         }
     })
 
@@ -621,15 +775,22 @@ function renderFab(onRetryCapture) {
         }
     })
 
-    // Menu is present per the design but its behavior isn't defined yet — intentionally
-    // a no-op beyond hover feedback until a follow-up defines what "more options" contains.
+    // Transcript opens in-page so the same controls work in installed web apps.
+    for (const trigger of [brandSegment, menuButton, ...fab.querySelectorAll("#fab-rewind-button, #fab-recap-button")]) {
+        trigger.setAttribute("aria-haspopup", "dialog")
+        trigger.setAttribute("aria-controls", "tape-live-panel")
+        trigger.setAttribute("aria-expanded", "false")
+    }
+    menuButton.setAttribute("aria-label", "Open live transcript")
+    menuButton.setAttribute("title", "Open live transcript")
     menuButton.addEventListener("mouseenter", () => { menuButton.style.filter = "brightness(0.95)" })
     menuButton.addEventListener("mouseleave", () => { menuButton.style.filter = "none" })
-    menuButton.addEventListener("click", (e) => { e.stopPropagation() })
+    menuButton.addEventListener("click", (e) => { e.stopPropagation(); openLivePanel() })
     menuButton.addEventListener("keydown", (e) => {
         if (e.key === "Enter" || e.key === " ") {
             e.preventDefault()
             e.stopPropagation()
+            openLivePanel()
         }
     })
 
@@ -645,145 +806,6 @@ function renderFab(onRetryCapture) {
             startFabTimer(fab, changes.meetingStartTimestamp.newValue)
         }
     })
-}
-
-/**
- * @description Lazily creates the (initially hidden) note-capture panel, a sibling of the
- * FAB rather than a child of it, so it can be positioned independently and isn't affected
- * by the FAB's drag handling. Idempotent — returns the existing panel on repeat calls.
- * @returns {HTMLElement}
- */
-function renderNotePanel() {
-    const existing = document.querySelector("#transcriptonic-note-panel")
-    if (existing) return /** @type {HTMLElement} */ (existing)
-
-    const panelCss = `
-        position: fixed;
-        display: none;
-        flex-direction: column;
-        gap: 8px;
-        width: 220px;
-        padding: 10px;
-        border-radius: 8px;
-        z-index: 100;
-        background-color: #f6f6f6;
-        box-shadow: 0px 8px 12px rgba(0,0,0,0.24);
-        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
-    `
-
-    const panel = document.createElement("div")
-    panel.id = "transcriptonic-note-panel"
-    panel.style.cssText = panelCss
-    panel.innerHTML = `
-        <textarea id="transcriptonic-note-input" placeholder="Add a note…" rows="3" style="
-            resize: none;
-            border: none;
-            outline: none;
-            border-radius: 8px;
-            padding: 8px;
-            background-color: white;
-            color: #1f1f1f;
-            font-size: 13px;
-            font-family: inherit;
-        "></textarea>
-        <div style="display: flex; align-items: center; justify-content: flex-end; gap: 8px;">
-            <span id="transcriptonic-note-confirmation" style="display: none; color: #2e7d32; font-size: 12px;">Saved</span>
-            <button id="transcriptonic-note-save" style="
-                border: none;
-                border-radius: 8px;
-                padding: 6px 12px;
-                background-color: #f34f16;
-                color: white;
-                font-size: 12px;
-                font-weight: 600;
-                cursor: pointer;
-            ">Save</button>
-        </div>
-    `
-
-    document.querySelector("html")?.appendChild(panel)
-
-    const textarea = /** @type {HTMLTextAreaElement} */ (panel.querySelector("#transcriptonic-note-input"))
-    const saveButton = /** @type {HTMLButtonElement} */ (panel.querySelector("#transcriptonic-note-save"))
-    const confirmation = /** @type {HTMLElement} */ (panel.querySelector("#transcriptonic-note-confirmation"))
-
-    function saveNote() {
-        const text = textarea.value.trim()
-        if (!text) {
-            closeNotePanel()
-            return
-        }
-        chrome.storage.local.get(["liveCommentNotes"], (resultUntyped) => {
-            const result = /** @type {ResultLocal} */ (resultUntyped)
-            const liveCommentNotes = (result.liveCommentNotes || []).concat([
-                { timestamp: new Date().toISOString(), text }
-            ])
-            chrome.storage.local.set({ liveCommentNotes }, () => {
-                textarea.value = ""
-                confirmation.style.display = "inline"
-                setTimeout(() => {
-                    confirmation.style.display = "none"
-                    closeNotePanel()
-                }, 800)
-            })
-        })
-    }
-
-    saveButton.addEventListener("click", (e) => {
-        e.stopPropagation()
-        saveNote()
-    })
-
-    // Don't let typing/clicking in the textarea reach the FAB's drag/click handling —
-    // the panel is a sibling of the FAB, not a descendant, so this is only needed for
-    // mousedown/click bubbling up to `document`'s click-away listener below.
-    textarea.addEventListener("mousedown", (e) => e.stopPropagation())
-    textarea.addEventListener("click", (e) => e.stopPropagation())
-    textarea.addEventListener("keydown", (e) => {
-        if (e.key === "Enter" && !e.shiftKey) {
-            e.preventDefault()
-            saveNote()
-        }
-        else if (e.key === "Escape") {
-            closeNotePanel()
-        }
-        e.stopPropagation()
-    })
-
-    // Click-away to close
-    document.addEventListener("mousedown", (e) => {
-        const target = /** @type {Element} */ (e.target)
-        if (panel.style.display !== "none" && !panel.contains(target) && !target.closest("#fab-note-button")) {
-            closeNotePanel()
-        }
-    })
-
-    return panel
-}
-
-function closeNotePanel() {
-    const panel = document.querySelector("#transcriptonic-note-panel")
-    if (panel) /** @type {HTMLElement} */ (panel).style.display = "none"
-}
-
-/**
- * @param {HTMLElement} fab
- */
-function toggleNotePanel(fab) {
-    const panel = renderNotePanel()
-    const isOpen = panel.style.display !== "none"
-    if (isOpen) {
-        closeNotePanel()
-        return
-    }
-
-    const fabRect = fab.getBoundingClientRect()
-    panel.style.top = `${fabRect.bottom + 8}px`
-    panel.style.right = `${window.innerWidth - fabRect.right}px`
-    panel.style.display = "flex"
-
-    const textarea = /** @type {HTMLTextAreaElement} */ (panel.querySelector("#transcriptonic-note-input"))
-    textarea.focus()
 }
 
 /**
@@ -913,6 +935,12 @@ function makeFabDraggable(fab) {
 }
 
 function unmountFab() {
+    if (fabResizeHandler) window.removeEventListener("resize", fabResizeHandler)
+    fabResizeHandler = null
+    liveMeetingPanel?.destroy()
+    liveMeetingPanel = null
+    currentLiveMeetingState = null
+    document.querySelector("#tape-fab-responsive")?.remove()
     if (fabTimerIntervalId) {
         clearInterval(fabTimerIntervalId)
         fabTimerIntervalId = null
@@ -922,13 +950,9 @@ function unmountFab() {
     // guard so the next meeting's FAB starts pre-join again instead of skipping
     // straight to the recording look because setFabJoinedState() already fired once.
     fabHasJoined = false
-    const fab = document.querySelector("#transcriptonic-fab")
+    const fab = document.querySelector("#tape-fab")
     if (fab) {
         fab.remove()
-    }
-    const notePanel = document.querySelector("#transcriptonic-note-panel")
-    if (notePanel) {
-        notePanel.remove()
     }
 }
 

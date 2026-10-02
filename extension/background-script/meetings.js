@@ -132,7 +132,7 @@ export function pickupLastMeetingFromStorage() {
             const result = /** @type {ResultLocal} */ (resultUntyped)
 
             if (result.meetingStartTimestamp) {
-                if ((result.transcript.length > 0) || (result.chatMessages.length > 0)) {
+                if ((result.transcript.length > 0) || (result.chatMessages.length > 0) || (result.liveCommentNotes?.length > 0)) {
                     // Run the user's Dictionary (extension/obsidian/dictionary.js) over the
                     // transcript before it's finalized — this is the single choke point every
                     // downstream consumer (storage, webhook/download, LLM prompt, Obsidian
@@ -177,7 +177,7 @@ export function pickupLastMeetingFromStorage() {
                     })
                 }
                 else {
-                    reject({ errorCode: "014", errorMessage: "Empty transcript and empty chatMessages" })
+                    reject({ errorCode: "014", errorMessage: "Empty transcript, chat messages, and notes" })
                 }
             }
             else {
@@ -290,4 +290,3 @@ export function triggerObsidianHandoffIfConfigured(meeting) {
             })
     })
 }
-

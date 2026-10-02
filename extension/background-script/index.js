@@ -1,3 +1,4 @@
+import { runLiveAssist, getLiveAssistPreview } from "./live-assist.js"
 import { ALARM_NAME } from "./config.js"
 import { processLastMeeting, recoverLastMeeting, finalizeMeetingOnce } from "./meetings.js"
 import { downloadTranscript, postTranscriptToWebhook } from "./exporters.js"
@@ -22,14 +23,18 @@ chrome.runtime.onMessage.addListener(function (messageUnTyped, sender, sendRespo
     const message = /** @type {ExtensionMessage} */ (messageUnTyped)
     console.log(message.type)
 
+    if (message.type === "live_assist" || message.type === "live_assist_preview") {
+        const action = message.type === "live_assist" ? runLiveAssist : getLiveAssistPreview
+        action(message.mode, sender.tab?.id).then(sendResponse)
+        return true
+    }
+
     if (message.type === "new_meeting_started") {
-        // Saving current tab id, to download transcript when this tab is closed
-        chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
-            const tabId = tabs[0].id
-            chrome.storage.local.set({ meetingTabId: tabId }, function () {
-                console.log("Meeting tab id saved")
-            })
-        })
+        // Use the capture sender, including a tab in an installed web-app window.
+        // Querying the active browser tab can pick a different meeting/window.
+        if (typeof sender.tab?.id === "number") {
+            chrome.storage.local.set({ meetingTabId: sender.tab.id })
+        }
     }
 
     if (message.type === "meeting_ended") {
@@ -342,10 +347,9 @@ chrome.permissions.onAdded.addListener((event) => {
         Promise.all(deRegisterPromises)
             .then(() => {
                 console.log("De-registered all content scripts. Starting re-registration...")
-
+                reRegisterContentScripts()
             })
-
-        reRegisterContentScripts()
+            .catch((error) => console.error("Could not refresh content scripts after permission change:", error))
     }, 2000)
 })
 

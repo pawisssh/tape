@@ -54,7 +54,7 @@ function updateMeetingTitleGoogleMeet(state) {
     waitForElement(SELECTORS_GOOGLE_MEET.MEETING_TITLE).then((element) => {
         const meetingTitleElement = /** @type {HTMLDivElement} */ (element)
         meetingTitleElement?.setAttribute("contenteditable", "true")
-        meetingTitleElement.title = "Edit meeting title for TranscripTonic"
+        meetingTitleElement.title = "Edit meeting title for Tape"
         meetingTitleElement.style.cssText = `text-decoration: underline white; text-underline-offset: 4px;`
 
         meetingTitleElement?.addEventListener("input", handleMeetingTitleElementChange)

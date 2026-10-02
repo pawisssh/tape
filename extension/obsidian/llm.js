@@ -330,6 +330,46 @@ async function getModelContextInfo(endpoint, model, apiKey, signal) {
 }
 
 /**
+ * Independent JSON transport for Live Assist. Obsidian enrichment below keeps
+ * its existing interpreter and output contract.
+ * @param {ObsidianSettings} settings
+ * @param {string} systemPrompt
+ * @param {string} userPrompt
+ * @returns {Promise<{value: Object | null} | {contextExceeded: true, requiredTokens: number, loadedContextLength?: number} | null>}
+ */
+export async function requestLlmJson(settings, systemPrompt, userPrompt) {
+    try {
+        const endpoint = settings.obsidianLlmEndpoint
+        const model = settings.obsidianLlmModel
+        if (!endpoint || !model) return null
+        const requiredTokens = estimateTokenCount(systemPrompt + "\n" + userPrompt)
+        const info = await getModelContextInfo(endpoint, model, settings.obsidianLlmApiKey)
+        const ceiling = info.loadedContextLength ?? info.maxContextLength
+        if (ceiling !== null && suggestedContextWindow(requiredTokens) > ceiling) return { contextExceeded: true, requiredTokens, loadedContextLength: ceiling }
+        const controller = new AbortController()
+        const timer = setTimeout(() => controller.abort(), Math.min(settings.obsidianLlmTimeoutMs || 45000, 45000))
+        try {
+            const response = await fetch(endpoint, {
+                method: "POST",
+                headers: { "Content-Type": "application/json", ...(settings.obsidianLlmApiKey ? { Authorization: `Bearer ${settings.obsidianLlmApiKey}` } : {}) },
+                body: JSON.stringify({ model, temperature: 0.3, stream: false, messages: [
+                    { role: "system", content: systemPrompt }, { role: "user", content: userPrompt },
+                ] }),
+                signal: controller.signal,
+            })
+            if (!response.ok) return await isContextLengthError(response) ? { contextExceeded: true, requiredTokens } : null
+            const body = await response.json()
+            const content = body?.choices?.[0]?.message?.content
+            return typeof content === "string" ? { value: extractJsonFromResponse(content) } : null
+        } finally {
+            clearTimeout(timer)
+        }
+    } catch {
+        return null
+    }
+}
+
+/**
  * Call the configured local LLM server (if the matched template has any AI
  * instructions at all — an all-variables template skips the network call entirely) and
  * resolve the matched SummaryTemplate's `properties`/`noteContent` against the result,

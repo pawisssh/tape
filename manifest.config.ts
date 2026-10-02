@@ -89,6 +89,8 @@ export default defineManifest({
                 "extension/fab-recording-icon.svg",
                 "extension/fab-play-icon.svg",
                 "extension/fab-note-icon.svg",
+                "extension/fab-rewind-icon.svg",
+                "extension/fab-recap-icon.svg",
                 "extension/fab-menu-icon.svg",
             ],
             matches: [

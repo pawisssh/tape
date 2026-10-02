@@ -422,3 +422,17 @@ actually work correctly — verify by hand, not just by reading the code:
 | D (Obsidian handoff status stepper) | | | |
 | D2 (clipboard copy while handoff tab unfocused + no new errors console) | 2026-08-26 | Pass | Rebuilt, reloaded unpacked from `dist/`, retested end-to-end. |
 | E (Base UI keyboard nav / focus / DOM inspection) | | | |
+
+## Live Rewind and Recap
+
+1. Reload the built extension and open a new Meet, Teams, or Zoom meeting with capture and captions enabled. Select a working provider/model in Integrations.
+2. Speak continuously for more than 30 seconds. Click Rewind in the floating widget: the in-page dropdown immediately shows the captured captions from the last 15 seconds, then adds the AI interpretation. Include recent words from the same speaker's ongoing block. After 15 seconds of no caption updates, Rewind should report no recent captions.
+3. Click Recap before the current caption block is finalized. Confirm the result covers the beginning of the meeting and the latest buffered text. Continue the discussion and click Recap again; the cutoff time and summary should update.
+4. Change the selected model and repeat either action. Confirm the result identifies the newly selected model. Confirm both buttons disable during a request and results/errors are readable and dismissible.
+5. Check before capture starts, with no transcript yet, with no selected model, and with an unavailable provider. Confirm informative errors and no capture interruption. For a long transcript, Recap should show progress if it cannot finish in one request; pressing again should continue without repeating earlier chunks. Changing the selected model should rebuild its recap from the start.
+6. End the meeting and verify the saved transcript, notes, normal final summary, and export behavior remain intact. Start another meeting and verify prior live results and caption buffers do not carry over.
+
+7. Open the meeting as an installed web app. Click the brand/menu button to toggle the transcript dropdown, and Rewind/Recap to open their tabs directly with an AI result. The upper half shows the selected tool and the lower half keeps the live transcript visible. No browser sidebar should open. Check Escape, the close button, clicking outside, narrow windows, moving the widget near each screen edge, and resizing. The dropdown stays on screen and follows the widget; starting a new meeting clears the old panel.
+8. Update an installed older version with Meet/Teams/Zoom capture already enabled. Reload the meeting page and confirm captions and the dropdown both work without toggling platform permissions. In a narrow window, verify Rewind and Recap remain available inside the dropdown when the floating widget hides their direct buttons.
+9. Check that the black timer segment ends close to the time text at 0:00:00 and after the meeting runs longer; it must still show every digit if the hour gains another digit. Before joining, the Note/Rewind/Recap buttons remain collapsed.
+10. Click the floating Note button. In the dropdown, select a transcript line, write a note, and save. Confirm the selected speaker and speech appear above the text area, the saved note clears the text area, and the finalized meeting's Notes include both the note and linked speech. Repeat with no line selected. Confirm the note still saves. A meeting with notes but no captions should still be saved.

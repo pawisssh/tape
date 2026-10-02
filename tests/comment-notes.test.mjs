@@ -23,6 +23,22 @@ describe("formatCommentNotesAsUserNotes", () => {
         assert.ok(firstIndex < secondIndex)
     })
 
+    test("keeps the selected speech next to its note in finalized meeting notes", () => {
+        const result = formatCommentNotesAsUserNotes([{
+            timestamp: "2026-01-01T21:41:00.000Z",
+            text: "Check the follow-up owner",
+            linkedTranscript: {
+                personName: "Sam",
+                timestamp: "2026-01-01T21:40:30.000Z",
+                transcriptText: "I can send the proposal tomorrow.",
+                blockIndex: 7,
+            },
+        }])
+        assert.match(result, /Linked to Sam/)
+        assert.match(result, /I can send the proposal tomorrow\./)
+        assert.ok(result.indexOf("I can send the proposal tomorrow.") < result.indexOf("Check the follow-up owner"))
+    })
+
     test("an empty array returns an empty string", () => {
         const result = formatCommentNotesAsUserNotes([])
         assert.equal(result, "")

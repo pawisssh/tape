@@ -77,11 +77,12 @@
 
 /**
  * @typedef {Object} CommentNoteEntry A quick note the user typed during the meeting via the
- * floating widget's note panel (see extension/content-scripts/common-utils.js's renderFab()).
+ * floating widget's Note tab (see extension/content-scripts/live-panel.js).
  * Merged into the finalized meeting's userNotes at meeting end — see
  * formatCommentNotesAsUserNotes() in extension/background-script/utils.js.
  * @property {string} timestamp ISO timestamp of when the note was saved
  * @property {string} text the note text
+ * @property {{personName: string, timestamp: string, transcriptText: string, blockIndex: number}} [linkedTranscript] the selected transcript block, snapshotted when the note was saved
  */
 
 /**
@@ -151,7 +152,8 @@
  */
 /**
  * @typedef {Object} ExtensionMessage Message sent by the calling script
- * @property {"new_meeting_started" | "meeting_ended" | "download_transcript_at_index" | "post_webhook_at_index" | "recover_last_meeting" | "get_platform_enablement_status" | "get_platform_permission_status" | "enable_platform" | "disable_platform" | "open_popup" | "open_side_panel" | "broadcast_live_buffer"} type type of message
+ * @property {"new_meeting_started" | "meeting_ended" | "download_transcript_at_index" | "post_webhook_at_index" | "recover_last_meeting" | "get_platform_enablement_status" | "get_platform_permission_status" | "enable_platform" | "disable_platform" | "open_popup" | "open_side_panel" | "broadcast_live_buffer" | "live_assist" | "live_assist_preview" | "get_live_snapshot"} type type of message
+ * @property {"rewind" | "recap"} [mode] live assistance action
  * @property {number} [index] index of the meeting to process
  * @property {Platform | Platform[]} [platform] index of the meeting to process
  * @property {StateTranscriptBlock} [stateTranscriptBlock]
@@ -159,6 +161,10 @@
 
 /**
  * @typedef {Object} ExtensionResponse Response sent by the called script
+ * @property {boolean} [partial] whether a recap still has transcript to process
+ * @property {string} [progress] recap progress for the current snapshot
+ * @property {string} [model] AI model used
+ * @property {string} [capturedAt] snapshot cutoff time
  * @property {boolean} success whether the message was processed successfully as per the request
  * @property {string | string[] | ErrorObject} [message] message explaining success or failure
  */

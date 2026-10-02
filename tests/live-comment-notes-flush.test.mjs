@@ -14,8 +14,8 @@ const PLATFORM_INDEX_FILES = [
     "extension/content-scripts/zoom/index.js",
 ]
 
-// The floating widget's note panel (extension/content-scripts/common-utils.js's
-// renderNotePanel()) writes new comment notes straight to
+// The floating widget's Note tab (extension/content-scripts/live-panel.js)
+// writes new comment notes straight to
 // chrome.storage.local.liveCommentNotes — it never goes through the in-memory
 // ContentScriptState `state` object the way transcript/chatMessages do (those get pushed
 // to both `state.X` and storage on every update, so re-flushing `state.X` at meeting end is
@@ -63,7 +63,7 @@ describe("overWriteChromeStorage", () => {
             console,
             document: { querySelector: () => null },
             chrome: {
-                runtime: { sendMessage: (message, callback) => callback && callback({ success: true }) },
+                runtime: { onMessage: { addListener() {} }, sendMessage: (message, callback) => callback && callback({ success: true }) },
                 storage: {
                     local: {
                         set(items, callback) {
@@ -104,7 +104,7 @@ describe("overWriteChromeStorage", () => {
         const { sandbox, fakeStorageState } = loadCommonUtils()
         fakeStorageState.local.liveCommentNotes = [{ timestamp: "t", text: "saved live by the note panel" }]
 
-        // state.liveCommentNotes is never populated — the note panel writes straight to
+// state.liveCommentNotes is never populated — the Note tab writes straight to
         // storage and never touches `state`.
         const state = sandbox.createContentScriptState("Google Meet", "google_meet")
 

@@ -94,3 +94,11 @@ The transcript may not always be accurate and is only intended to aid in improvi
 
 <br />
 <br />
+
+### Live Rewind and Recap
+
+During a captured Meet, Teams, or Zoom meeting, click **Rewind** or **Recap** in the floating widget or its in-page transcript dropdown. Rewind shows captions received in the last 15 seconds immediately, then asks the selected AI provider/model to interpret them. Recap summarizes captured transcript text from the start through the moment of the request, including the current unfinished caption block. It saves an in-progress checkpoint and summarizes only new text when pressed again. For a long meeting, it may pause after a few chunks; the dropdown shows progress and another press continues from the checkpoint. The final meeting summary still runs through the usual flow.
+
+The same dropdown has a **Note** tab above the live transcript. Click a transcript line to link that speech to a note, write in the text area, then save. Notes can also be saved without a linked line. The floating note button opens this tab directly; linked speech is included with the note in the finalized meeting.
+
+These explicit actions work independently of automatic summary settings. They do not finalize a meeting, export it, or overwrite its final summary. Captions must be enabled and an AI provider/model selected in Integrations. The 15-second window uses caption arrival times, rather than audio or word-level timestamps.

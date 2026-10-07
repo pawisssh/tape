@@ -41,6 +41,9 @@
  * @typedef {boolean} HideCaptions hide the captions on the UI by changing height and opacity
  */
 /**
+ * @typedef {"auto" | "en" | "th"} OutputLanguage language every AI analysis (Rewind, Recap, meeting summary) answers in — see extension/obsidian/output-language.js. "auto" matches the transcript's language
+ */
+/**
  * @typedef {"simple" | "advanced"} WebhookBodyType type of webhook body to use
  */
 /**
@@ -73,6 +76,15 @@
  * @property {string} personName name of the person who sent the message
  * @property {string} timestamp ISO timestamp of when the message was sent
  * @property {string} chatMessageText actual message text
+ */
+
+/**
+ * @typedef {Object} TranscriptChatMessage One user/assistant turn in the saved AI chat
+ * session for a completed meeting.
+ * @property {string} id stable client-generated id
+ * @property {"user" | "assistant"} role
+ * @property {string} content
+ * @property {string} createdAt ISO timestamp
  */
 
 /**
@@ -119,6 +131,7 @@
  * @property {boolean} [llmSummaryIncludesChatMessages] same as llmSummaryIncludesTranscript, for a {{chatMessages}} section. Additive/optional — absent is treated as false.
  * @property {string} [templateOverrideId] id of a SummaryTemplate (or the literal "default") the user explicitly picked for THIS meeting via the header toolbar's Follow-up picker (src/meetings/agenda/FollowUpTemplatePicker.tsx), overriding resolveTemplateForTitle()'s automatic keyword match — see extension/obsidian/llm.js's enrichWithLlm(). Added in the visual redesign, additive/optional — absent means "use automatic resolution as before." A stale id (template since deleted) falls back to automatic resolution rather than erroring.
  * @property {string} [userNotes] freeform per-meeting notes the user typed directly in the Notes tab — no AI involvement, plain user-authored text. Added in the visual redesign, additive/optional — absent/empty means no notes. Exported to Obsidian as the last section of the note, after Transcript/Chat messages — see extension/obsidian/markdown.js's renderNotesSection()/buildMarkdown().
+ * @property {TranscriptChatMessage[]} [transcriptChatMessages] persisted user/assistant turns from the meeting's Chat with AI tab. Additive/optional; absent means no chat session has been started.
  */
 
 /** @typedef {Object} StateTranscriptBlock
@@ -204,6 +217,7 @@
  * @property {AutoDownloadFileAfterMeeting} autoDownloadFileAfterMeeting
  * @property {OperationMode} operationMode
  * @property {HideCaptions} hideCaptions
+ * @property {OutputLanguage | undefined} outputLanguage
  * @property {WebhookBodyType} webhookBodyType
  * @property {WebhookUrl} webhookUrl
  * @property {WantGoogleMeet} wantGoogleMeet

@@ -1,5 +1,6 @@
 // @ts-check
 import { cleanText, isRecord } from "./shared.js"
+import { outputLanguageInstruction } from "../../obsidian/output-language.js"
 
 export const RECAP_SKILL_REVISION = 1
 
@@ -87,22 +88,30 @@ export function mergeRecapState(previous, output, excerpt) {
     }
 }
 
-/** @param {RecapState} state */
-export function renderRecap(state) {
+const RECAP_HEADINGS = {
+    th: { decisions: "การตัดสินใจ", actionItems: "สิ่งที่ต้องทำ", unresolvedQuestions: "คำถามที่ยังค้างอยู่" },
+    default: { decisions: "Decisions", actionItems: "Action items", unresolvedQuestions: "Unresolved questions" },
+}
+
+/** @param {RecapState} state @param {OutputLanguage} [outputLanguage] */
+export function renderRecap(state, outputLanguage) {
+    const headings = outputLanguage === "th" ? RECAP_HEADINGS.th : RECAP_HEADINGS.default
     const sections = [state.overview.slice(0, 1200)]
-    if (state.decisions.length) sections.push("Decisions\n" + state.decisions.map(item => "• " + item).join("\n"))
-    if (state.actionItems.length) sections.push("Action items\n" + state.actionItems.map(item =>
+    if (state.decisions.length) sections.push(headings.decisions + "\n" + state.decisions.map(item => "• " + item).join("\n"))
+    if (state.actionItems.length) sections.push(headings.actionItems + "\n" + state.actionItems.map(item =>
         "• " + item.task + (item.owner ? " — " + item.owner : "") + (item.deadline ? " (" + item.deadline + ")" : "")).join("\n"))
-    if (state.unresolvedQuestions.length) sections.push("Unresolved questions\n" + state.unresolvedQuestions.map(item => "• " + item).join("\n"))
+    if (state.unresolvedQuestions.length) sections.push(headings.unresolvedQuestions + "\n" + state.unresolvedQuestions.map(item => "• " + item).join("\n"))
     return sections.filter(Boolean).join("\n\n")
 }
 
 export const recapSkill = {
     id: "recap",
-    /** @param {RecapState} previous @param {string} excerpt */
-    buildPrompt(previous, excerpt) {
+    /** @param {RecapState} previous @param {string} excerpt @param {OutputLanguage} [outputLanguage] */
+    buildPrompt(previous, excerpt, outputLanguage) {
+        const languageInstruction = outputLanguageInstruction(outputLanguage)
         return JSON.stringify({
             task: "Update the meeting recap from the new transcript. Return a concise overview and newly supported decisions, action items and unresolved questions. Retain previous supported facts. If new evidence explicitly corrects an earlier item, include its exact prior text in superseded with a verbatim evidence quote from newTranscript. Do not imply the meeting ended.",
+            ...(languageInstruction ? { outputLanguage: languageInstruction + " superseded.text must still match the prior item exactly and superseded.evidence must stay a verbatim quote from newTranscript." } : {}),
             outputShape: { overview: "string", decisions: ["string"], actionItems: [{ task: "string", owner: "optional explicit string", deadline: "optional explicit string" }], unresolvedQuestions: ["string"], superseded: [{ kind: "decision | actionItem | unresolvedQuestion", text: "exact prior item text", evidence: "verbatim quote from newTranscript" }] },
             previousState: previous,
             newTranscript: excerpt,

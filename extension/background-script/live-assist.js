@@ -50,7 +50,9 @@ async function runProgressiveRecap(meeting, settings) {
     recapInProgress = true
     try {
         const source = renderLiveRecapSource(meeting.transcript)
-        const connectionKey = settings.obsidianLlmEndpoint + "\n" + settings.obsidianLlmModel
+        // Language is part of the key so switching it mid-meeting restarts the recap instead
+        // of merging state written in two languages.
+        const connectionKey = settings.obsidianLlmEndpoint + "\n" + settings.obsidianLlmModel + "\n" + settings.outputLanguage
         const stored = await chrome.storage.local.get("liveRecapCheckpoint")
         const checkpoint = usableLiveRecapCheckpoint(stored.liveRecapCheckpoint, meeting.meetingStartTimestamp, connectionKey, source)
         let processed = checkpoint?.sourceText.length || 0
@@ -62,7 +64,7 @@ async function runProgressiveRecap(meeting, settings) {
             let end = nextLiveRecapChunkEnd(source, processed)
             let answer
             while (true) {
-                answer = await requestSkill(settings, recapSkill.buildPrompt(state, source.slice(processed, end)))
+                answer = await requestSkill(settings, recapSkill.buildPrompt(state, source.slice(processed, end), settings.outputLanguage))
                 if (!("error" in answer) || !answer.error.startsWith("The transcript exceeds") || end - processed <= 1200) break
                 end = processed + Math.floor((end - processed) / 2)
             }
@@ -70,7 +72,7 @@ async function runProgressiveRecap(meeting, settings) {
             if (!output) {
                 const error = "error" in answer ? answer.error : "AI returned an invalid recap. Try again."
                 if (!processed) return { success: false, message: error }
-                return { success: true, message: recapSkill.render(state), model: settings.obsidianLlmModel, partial: true,
+                return { success: true, message: recapSkill.render(state, settings.outputLanguage), model: settings.obsidianLlmModel, partial: true,
                     progress: "Recap paused at " + Math.round(processed / source.length * 100) + "%. Press Recap again to continue. " + error }
             }
             state = mergeRecapState(state, output, source.slice(processed, end))
@@ -86,7 +88,7 @@ async function runProgressiveRecap(meeting, settings) {
                 state,
             } })
         }
-        return { success: true, message: recapSkill.render(state), model: settings.obsidianLlmModel,
+        return { success: true, message: recapSkill.render(state, settings.outputLanguage), model: settings.obsidianLlmModel,
             ...(processed < source.length
                 ? { partial: true, progress: "Recap is " + Math.round(processed / source.length * 100) + "% caught up. Press Recap again to continue." }
                 : { capturedAt: meeting.meetingEndTimestamp }) }
@@ -105,7 +107,7 @@ export async function runLiveAssist(mode, sourceTabId) {
         const settings = await getObsidianSettings()
         if (!settings.obsidianLlmEndpoint || !settings.obsidianLlmModel) return { success: false, message: "Select an AI provider and model in Integrations first." }
         if (mode === "recap") return await runProgressiveRecap(meeting, settings)
-        const answer = await requestSkill(settings, rewindSkill.buildPrompt(meeting))
+        const answer = await requestSkill(settings, rewindSkill.buildPrompt(meeting, settings.outputLanguage))
         if ("error" in answer) return { success: false, message: answer.error }
         const output = rewindSkill.validate(answer.value)
         if (!output) return { success: false, message: "AI returned an invalid rewind. Try again." }

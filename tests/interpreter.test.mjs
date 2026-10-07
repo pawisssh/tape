@@ -445,6 +445,14 @@ describe("buildInterpreterUserPrompt / INTERPRETER_SYSTEM_PROMPT", () => {
         assert.ok(prompt.includes("the decisions"))
     })
 
+    test("appends the selected output language, and nothing for auto", () => {
+        const instructions = [{ id: "field_1", instruction: "the main topic", listShaped: false, timestamped: false }]
+        const thai = buildInterpreterUserPrompt(makeMeeting(), instructions, "th")
+        assert.ok(thai.trimEnd().endsWith("exactly as they appear in the transcript."))
+        assert.ok(thai.includes("in Thai"))
+        assert.equal(buildInterpreterUserPrompt(makeMeeting(), instructions, "auto"), buildInterpreterUserPrompt(makeMeeting(), instructions))
+    })
+
     // This is the DEFAULT system prompt only — the Settings page's AI summary category
     // now lets a user fully replace it (extension/obsidian/store.js's
     // getObsidianSettings() falls back to this exact constant when that setting is

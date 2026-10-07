@@ -26,7 +26,7 @@ import { getTranscriptString, getChatMessagesString } from "../../../extension/b
 // header comment for the full rationale.
 import { summarizeNow } from "../../../extension/obsidian/summarize-now.js"
 import CircleIconButton from "../ui/CircleIconButton"
-import { ContentCopyIcon, DownloadIcon, MoreHorizIcon, WebhookIcon, DeleteIcon } from "../ui/icons"
+import { ChatBubbleIcon, ContentCopyIcon, DownloadIcon, MoreHorizIcon, WebhookIcon, DeleteIcon } from "../ui/icons"
 import FollowUpTemplatePicker from "./FollowUpTemplatePicker"
 import ContextExceededDialog from "./ContextExceededDialog"
 
@@ -45,6 +45,7 @@ interface MeetingDetailToolbarProps {
     // DetailTabs, a sibling component) can reach it — see MeetingsView.tsx's own comment
     // on its cancelHandlersRef.
     onRegisterCancel: (meetingId: string, fn: (() => void) | null) => void
+    onOpenChat: () => void
 }
 
 // Rendered in MeetingsView.tsx's `detailTitle` slot — MasterDetailLayout's sticky h-16
@@ -64,6 +65,7 @@ export default function MeetingDetailToolbar({
     operation,
     onOperationChange,
     onRegisterCancel,
+    onOpenChat,
 }: MeetingDetailToolbarProps) {
     const [isPostingWebhook, setIsPostingWebhook] = useState(false)
     const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false)
@@ -178,6 +180,9 @@ export default function MeetingDetailToolbar({
                 <DropdownMenu>
                     <DropdownMenuTrigger render={<CircleIconButton label="More actions" icon={<MoreHorizIcon />} />} />
                     <DropdownMenuContent align="start">
+                        <DropdownMenuItem onClick={onOpenChat}>
+                            <ChatBubbleIcon className="size-4" /> Chat with AI
+                        </DropdownMenuItem>
                         <DropdownMenuItem disabled={isPostingWebhook} onClick={handleWebhookPost}>
                             <WebhookIcon className="size-4" />
                             {meeting.webhookPostStatus === "new" ? "Post webhook" : "Repost webhook"}

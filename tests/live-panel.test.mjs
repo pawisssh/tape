@@ -22,6 +22,18 @@ test('dropdown remains within the viewport near every edge and in a narrow windo
     }
 })
 
+test('settings menu stays in the viewport and flips above a widget near the bottom', () => {
+    for (const [width, height] of [[1440, 900], [320, 480]]) {
+        for (const anchor of [{ left: 0, right: 200, top: 0, bottom: 40 }, { left: width - 200, right: width, top: height - 40, bottom: height }]) {
+            const result = context.getFabMenuPlacement(anchor, width, height, 220)
+            assert.ok(result.left >= 12 && result.top >= 12)
+            assert.ok(result.left + result.width <= width - 12)
+            assert.ok(result.top + 220 <= height - 12)
+        }
+    }
+    assert.ok(context.getFabMenuPlacement({ left: 500, right: 900, top: 800, bottom: 840 }, 1440, 900, 220).top + 220 < 800)
+})
+
 test('dropdown flips above a widget near the bottom', () => {
     const result = context.getLivePanelPlacement({ left: 500, right: 900, top: 800, bottom: 840 }, 1440, 900)
     assert.ok(result.top + result.height < 800)

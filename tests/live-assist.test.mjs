@@ -6,6 +6,7 @@ import { runLiveAssist, getLiveAssistPreview } from '../extension/background-scr
 import { renderLiveRecapSource, nextLiveRecapChunkEnd, usableLiveRecapCheckpoint, RECAP_CHECKPOINT_VERSION } from '../extension/background-script/live-recap.js'
 import { LIVE_ASSIST_PROMPT_REVISION, LIVE_ASSIST_SYSTEM_PROMPT } from '../extension/background-script/skills/shared.js'
 import { emptyRecapState, validateRecapOutput, mergeRecapState, recapSkill, RECAP_SKILL_REVISION } from '../extension/background-script/skills/recap.js'
+import { rewindSkill } from '../extension/background-script/skills/rewind.js'
 
 const source = readFileSync(new URL('../extension/content-scripts/common-utils.js', import.meta.url), 'utf8')
 function capture() {
@@ -171,6 +172,7 @@ test('long recap uses sequential chunks and resumes only new transcript with the
     const saved = {}
     let transcriptText = 'Old discussion. '.repeat(700)
     let model = 'model-a'
+    let outputLanguage
     const requests = []
     globalThis.chrome = {
         storage: {
@@ -182,7 +184,7 @@ test('long recap uses sequential chunks and resumes only new transcript with the
                 },
                 set: async values => Object.assign(saved, values),
             },
-            sync: { get: (_keys, callback) => callback({ obsidianLlmTimeoutMs: 600000 }) },
+            sync: { get: (_keys, callback) => callback({ obsidianLlmTimeoutMs: 600000, outputLanguage }) },
         },
         tabs: { sendMessage: async () => ({ meetingTitle: 'Standup', meetingSoftware: 'Google Meet', meetingStartTimestamp: new Date(0).toISOString(), meetingEndTimestamp: new Date().toISOString(), transcript: [{ personName: 'Bob', timestamp: new Date(0).toISOString(), transcriptText }], chatMessages: [], webhookPostStatus: 'new' }) },
     }
@@ -213,7 +215,14 @@ test('long recap uses sequential chunks and resumes only new transcript with the
         model = 'model-b'
         await runLiveAssist('recap')
         assert.ok(requests.length >= firstCount + 3)
-        assert.equal(saved.liveRecapCheckpoint.connectionKey.endsWith('model-b'), true)
+        assert.equal(saved.liveRecapCheckpoint.connectionKey.endsWith('model-b\nauto'), true)
+        assert.ok(!requests.at(-1).messages[1].content.includes('outputLanguage'))
+        const beforeThai = requests.length
+        outputLanguage = 'th'
+        await runLiveAssist('recap')
+        assert.ok(requests.length >= beforeThai + 2, 'switching language restarts the recap from the beginning')
+        assert.ok(JSON.parse(requests.at(-1).messages[1].content).outputLanguage.includes('Thai'))
+        assert.equal(saved.liveRecapCheckpoint.connectionKey.endsWith('model-b\nth'), true)
     } finally {
         globalThis.fetch = originalFetch
         globalThis.setTimeout = originalSetTimeout
@@ -368,4 +377,20 @@ test('back-to-back meetings keep one snapshot listener serving only the current 
     let response
     listeners[0]({ type: 'get_live_snapshot', mode: 'recap' }, {}, value => { response = value })
     assert.equal(response.transcript[0].transcriptText, 'New meeting')
+})
+
+test('rewind and recap prompts carry the selected output language and omit it for auto', () => {
+    const meeting = { transcript: [{ personName: 'Bob', timestamp: 't', transcriptText: 'Ship it Friday.' }] }
+    assert.match(JSON.parse(rewindSkill.buildPrompt(meeting, 'th')).outputLanguage, /in Thai/)
+    assert.match(JSON.parse(rewindSkill.buildPrompt(meeting, 'en')).outputLanguage, /in English/)
+    assert.equal(JSON.parse(rewindSkill.buildPrompt(meeting, 'auto')).outputLanguage, undefined)
+    assert.equal(JSON.parse(rewindSkill.buildPrompt(meeting)).outputLanguage, undefined)
+    const recap = JSON.parse(recapSkill.buildPrompt(emptyRecapState(), 'Bob: Ship it Friday.', 'th'))
+    assert.match(recap.outputLanguage, /in Thai/)
+    assert.match(recap.outputLanguage, /verbatim quote/)
+    assert.equal(JSON.parse(recapSkill.buildPrompt(emptyRecapState(), 'x', 'auto')).outputLanguage, undefined)
+    assert.match(LIVE_ASSIST_SYSTEM_PROMPT, /outputLanguage/)
+    const state = { ...emptyRecapState(), overview: 'ภาพรวม', decisions: ['เปิดตัววันศุกร์'] }
+    assert.match(recapSkill.render(state, 'th'), /การตัดสินใจ/)
+    assert.match(recapSkill.render(state, 'auto'), /^Decisions$/m)
 })

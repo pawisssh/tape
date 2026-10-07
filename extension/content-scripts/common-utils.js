@@ -703,7 +703,7 @@ function renderFab(onRetryCapture) {
             <img src="${FAB_NOTE_ICON_URL}" alt="" draggable="false" style="width: 24px; height: 24px; display: block; flex-shrink: 0;" />
         </div>
 
-        <div id="fab-menu-button" role="button" tabindex="0" aria-label="More options" title="More options" style="background-color: #f6f6f6; width: 48px; height: 100%; flex-shrink: 0; display: flex; align-items: center; justify-content: center; padding: 8px; cursor: pointer;">
+        <div id="fab-menu-button" role="button" tabindex="0" aria-label="Settings" title="Settings" style="background-color: #f6f6f6; width: 48px; height: 100%; flex-shrink: 0; display: flex; align-items: center; justify-content: center; padding: 8px; cursor: pointer;">
             <img src="${FAB_MENU_ICON_URL}" alt="" draggable="false" style="width: 24px; height: 24px; display: block;" />
         </div>
     `
@@ -776,21 +776,22 @@ function renderFab(onRetryCapture) {
     })
 
     // Transcript opens in-page so the same controls work in installed web apps.
-    for (const trigger of [brandSegment, menuButton, ...fab.querySelectorAll("#fab-rewind-button, #fab-recap-button")]) {
+    for (const trigger of [brandSegment, ...fab.querySelectorAll("#fab-rewind-button, #fab-recap-button")]) {
         trigger.setAttribute("aria-haspopup", "dialog")
         trigger.setAttribute("aria-controls", "tape-live-panel")
         trigger.setAttribute("aria-expanded", "false")
     }
-    menuButton.setAttribute("aria-label", "Open live transcript")
-    menuButton.setAttribute("title", "Open live transcript")
+    menuButton.setAttribute("aria-haspopup", "menu")
+    menuButton.setAttribute("aria-controls", "tape-fab-menu")
+    menuButton.setAttribute("aria-expanded", "false")
     menuButton.addEventListener("mouseenter", () => { menuButton.style.filter = "brightness(0.95)" })
     menuButton.addEventListener("mouseleave", () => { menuButton.style.filter = "none" })
-    menuButton.addEventListener("click", (e) => { e.stopPropagation(); openLivePanel() })
+    menuButton.addEventListener("click", (e) => { e.stopPropagation(); toggleFabMenu(fab) })
     menuButton.addEventListener("keydown", (e) => {
         if (e.key === "Enter" || e.key === " ") {
             e.preventDefault()
             e.stopPropagation()
-            openLivePanel()
+            toggleFabMenu(fab)
         }
     })
 
@@ -939,6 +940,8 @@ function unmountFab() {
     fabResizeHandler = null
     liveMeetingPanel?.destroy()
     liveMeetingPanel = null
+    fabMenu?.destroy()
+    fabMenu = null
     currentLiveMeetingState = null
     document.querySelector("#tape-fab-responsive")?.remove()
     if (fabTimerIntervalId) {

@@ -2,6 +2,16 @@
 // Captions, AI output and user notes are always inserted with textContent.
 /** @type {ReturnType<typeof createLiveMeetingPanel> | null} */
 let liveMeetingPanel = null
+/** @type {ReturnType<typeof createFabMenu> | null} */
+let fabMenu = null
+
+// Mirrors OUTPUT_LANGUAGES in extension/obsidian/output-language.js — content scripts are
+// classic scripts and cannot import ES modules.
+const FAB_MENU_OUTPUT_LANGUAGES = [
+    { id: "auto", label: "Auto (match meeting)" },
+    { id: "en", label: "English" },
+    { id: "th", label: "ไทย (Thai)" },
+]
 
 /** @param {{left: number, top: number, width: number, height: number}} rect @param {number} viewportWidth @param {number} viewportHeight */
 function getFabViewportPosition(rect, viewportWidth, viewportHeight) {
@@ -22,6 +32,19 @@ function getLivePanelPlacement(anchor, viewportWidth, viewportHeight) {
         ? Math.min(anchor.bottom + 8, viewportHeight - height - margin)
         : Math.max(margin, anchor.top - height - 8)
     return { width, height, left: Math.max(margin, Math.min(anchor.right - width, viewportWidth - width - margin)), top: Math.max(margin, top) }
+}
+
+/** @param {DOMRect | {left: number, right: number, top: number, bottom: number}} anchor @param {number} viewportWidth @param {number} viewportHeight @param {number} menuHeight */
+function getFabMenuPlacement(anchor, viewportWidth, viewportHeight, menuHeight) {
+    const margin = 12
+    const width = Math.max(0, Math.min(260, viewportWidth - margin * 2))
+    const height = Math.max(0, Math.min(menuHeight, viewportHeight - margin * 2))
+    const below = viewportHeight - anchor.bottom - margin - 8
+    const above = anchor.top - margin - 8
+    const top = below >= height || below >= above
+        ? Math.min(anchor.bottom + 8, viewportHeight - height - margin)
+        : Math.max(margin, anchor.top - height - 8)
+    return { width, left: Math.max(margin, Math.min(anchor.right - width, viewportWidth - width - margin)), top: Math.max(margin, top) }
 }
 
 /** @param {string} text @param {(TranscriptBlock & {blockIndex: number}) | null} linked @param {number} [now] @returns {CommentNoteEntry} */
@@ -363,6 +386,7 @@ function createLiveMeetingPanel(fab) {
     observer.observe(fab, { attributes: true, attributeFilter: ["style"] })
     return {
         open, refresh,
+        close() { if (host.style.display !== "none") close() },
         toggle() { if (host.style.display === "none") open(); else close() },
         destroy() {
             disposed = true
@@ -377,7 +401,137 @@ function createLiveMeetingPanel(fab) {
 
 /** @param {HTMLElement} fab @param {"rewind" | "recap" | "note"} [mode] */
 function toggleLiveMeetingPanel(fab, mode) {
+    fabMenu?.close()
     liveMeetingPanel ||= createLiveMeetingPanel(fab)
     if (mode) liveMeetingPanel.open(mode)
     else liveMeetingPanel.toggle()
+}
+
+/** "More" dropdown on the FAB — in-meeting settings, persisted to chrome.storage.sync. @param {HTMLElement} fab */
+function createFabMenu(fab) {
+    const host = document.createElement("div")
+    host.id = "tape-fab-menu"
+    host.style.cssText = "all:initial; position:fixed; z-index:2147483647; display:none;"
+    const root = host.attachShadow({ mode: "closed" })
+    root.innerHTML = `
+        <style>
+            :host { color-scheme:dark; }
+            * { box-sizing:border-box; }
+            .menu { background:#111; color:#f6f6f6; border:1px solid #333; border-radius:12px; box-shadow:0 16px 48px #0007; padding:6px; font:14px/1.45 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; }
+            .title { padding:8px 10px 6px; font-size:12px; font-weight:600; color:#999; text-transform:uppercase; letter-spacing:.04em; }
+            .group { padding:6px 10px 4px; font-size:13px; font-weight:600; }
+            button { display:flex; align-items:center; gap:8px; width:100%; padding:8px 10px; font:inherit; text-align:left; background:transparent; color:inherit; border:0; border-radius:6px; cursor:pointer; }
+            button:hover,button:focus-visible { background:#ffffff14; outline:none; }
+            button:focus-visible { box-shadow:inset 0 0 0 2px #f34f16; }
+            .check { width:16px; color:#f34f16; font-weight:700; flex-shrink:0; }
+            .hint { padding:4px 10px 8px; color:#888; font-size:12px; }
+        </style>
+        <div class="menu" role="menu" aria-label="Tape settings">
+            <div class="title">Settings</div>
+            <div class="group" id="language-label">AI output language</div>
+            <div role="group" aria-labelledby="language-label">
+                ${FAB_MENU_OUTPUT_LANGUAGES.map(language => `<button type="button" role="menuitemradio" aria-checked="false" tabindex="-1" data-language="${language.id}"><span class="check" aria-hidden="true"></span>${language.label}</button>`).join("")}
+            </div>
+            <p class="hint">Applies to Rewind, Recap and meeting summaries.</p>
+        </div>`
+    document.documentElement.appendChild(host)
+
+    const menu = /** @type {HTMLElement} */ (root.querySelector(".menu"))
+    const items = /** @type {HTMLButtonElement[]} */ ([...root.querySelectorAll("[role='menuitemradio']")])
+    const trigger = () => /** @type {HTMLElement | null} */ (fab.querySelector("#fab-menu-button"))
+    let selected = "auto"
+    let disposed = false
+
+    function isOpen() { return host.style.display !== "none" }
+    function place() {
+        if (!isOpen()) return
+        const position = getFabMenuPlacement(fab.getBoundingClientRect(), window.innerWidth, window.innerHeight, menu.offsetHeight || 220)
+        for (const key of ["width", "left", "top"]) host.style[key] = position[key] + "px"
+    }
+    /** @param {unknown} value */
+    function render(value) {
+        selected = value === "en" || value === "th" ? value : "auto"
+        for (const item of items) {
+            const checked = item.dataset.language === selected
+            const check = /** @type {HTMLElement} */ (item.querySelector(".check"))
+            item.setAttribute("aria-checked", String(checked))
+            check.textContent = checked ? "✓" : ""
+        }
+    }
+    /** @param {boolean} [restoreFocus] */
+    function close(restoreFocus = true) {
+        if (!isOpen()) return
+        host.style.display = "none"
+        trigger()?.setAttribute("aria-expanded", "false")
+        if (restoreFocus) trigger()?.focus()
+    }
+    function open() {
+        liveMeetingPanel?.close()
+        host.style.display = "block"
+        place()
+        trigger()?.setAttribute("aria-expanded", "true")
+        chrome.storage.sync.get(["outputLanguage"], (result) => {
+            if (disposed) return
+            render(result?.outputLanguage)
+            ;(items.find(item => item.dataset.language === selected) || items[0]).focus()
+        })
+    }
+    /** @param {string} language */
+    function choose(language) {
+        render(language)
+        chrome.storage.sync.set({ outputLanguage: selected })
+        close()
+    }
+    for (const [index, item] of items.entries()) {
+        item.addEventListener("click", () => choose(/** @type {string} */ (item.dataset.language)))
+        item.addEventListener("keydown", (event) => {
+            const next = event.key === "ArrowDown" ? (index + 1) % items.length
+                : event.key === "ArrowUp" ? (index + items.length - 1) % items.length
+                    : event.key === "Home" ? 0 : event.key === "End" ? items.length - 1 : -1
+            if (next < 0) return
+            event.preventDefault()
+            items[next].focus()
+        })
+    }
+    /** @param {PointerEvent} event */
+    function outside(event) {
+        if (isOpen() && !event.composedPath().includes(host) && !trigger()?.contains(/** @type {Node} */ (event.target))) close(false)
+    }
+    /** @param {KeyboardEvent} event */
+    function escape(event) {
+        if (event.key === "Escape" && isOpen()) {
+            event.preventDefault()
+            event.stopPropagation()
+            close()
+        }
+    }
+    /** @param {{[key: string]: chrome.storage.StorageChange}} changes @param {string} areaName */
+    function storageChanged(changes, areaName) {
+        if (areaName === "sync" && changes.outputLanguage) render(changes.outputLanguage.newValue)
+    }
+    document.addEventListener("pointerdown", outside, true)
+    document.addEventListener("keydown", escape, true)
+    window.addEventListener("resize", place)
+    chrome.storage.onChanged.addListener(storageChanged)
+    const observer = new MutationObserver(place)
+    observer.observe(fab, { attributes: true, attributeFilter: ["style"] })
+    return {
+        close() { close(false) },
+        toggle() { if (isOpen()) close(); else open() },
+        destroy() {
+            disposed = true
+            observer.disconnect()
+            document.removeEventListener("pointerdown", outside, true)
+            document.removeEventListener("keydown", escape, true)
+            window.removeEventListener("resize", place)
+            chrome.storage.onChanged.removeListener(storageChanged)
+            host.remove()
+        },
+    }
+}
+
+/** @param {HTMLElement} fab */
+function toggleFabMenu(fab) {
+    fabMenu ||= createFabMenu(fab)
+    fabMenu.toggle()
 }

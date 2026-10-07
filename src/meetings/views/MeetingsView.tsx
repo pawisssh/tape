@@ -9,6 +9,7 @@ import MobileBackButton from "../components/MobileBackButton"
 import MeetingListRow from "../agenda/MeetingListRow"
 import MeetingDetail from "../agenda/MeetingDetail"
 import MeetingDetailToolbar from "../agenda/MeetingDetailToolbar"
+import type { MeetingDetailTab } from "../agenda/DetailTabs"
 import { groupMeetingsByDay } from "../agenda/group-by-day"
 import { toggleActionItemDone } from "../summary/parse-summary-markdown"
 import { parseGoogleMeetTranscript } from "../import/parse-google-meet-transcript"
@@ -18,6 +19,7 @@ export default function MeetingsView() {
     // Stable id — matches extension/obsidian/store.js's getMeetingId() (meetingStartTimestamp).
     const [selectedMeetingId, setSelectedMeetingId] = useState<string | null>(null)
     const [mobileDetailOpen, setMobileDetailOpen] = useState(false)
+    const [activeDetailTab, setActiveDetailTab] = useState<MeetingDetailTab>("summary")
     // Whichever of "Run" (MeetingDetail.tsx) or a template-triggered regenerate
     // (MeetingDetailToolbar.tsx) is in flight for the currently-selected meeting — lifted
     // here since those two components are siblings (MasterDetailLayout's `detailTitle` vs.
@@ -128,11 +130,19 @@ export default function MeetingsView() {
         setLocal({ meetings: updated })
         setSelectedMeetingId(null)
         setMobileDetailOpen(false)
+        setActiveDetailTab("summary")
     }
 
     function handleNotesSaved(index: number, userNotes: string) {
         const updated = [...meetings]
         updated[index] = { ...updated[index], userNotes }
+        setMeetings(updated)
+        setLocal({ meetings: updated })
+    }
+
+    function handleChatSessionChanged(index: number, transcriptChatMessages: TranscriptChatMessage[]) {
+        const updated = [...meetings]
+        updated[index] = { ...updated[index], transcriptChatMessages }
         setMeetings(updated)
         setLocal({ meetings: updated })
     }
@@ -192,6 +202,7 @@ export default function MeetingsView() {
             setLocal({ meetings: updated })
             setSelectedMeetingId(newMeeting.meetingStartTimestamp)
             setMobileDetailOpen(true)
+            setActiveDetailTab("summary")
             toast.add({ title: "Transcript imported", type: "success" })
         }
         reader.onerror = () => {
@@ -263,6 +274,7 @@ export default function MeetingsView() {
                                         onSelect={() => {
                                             setSelectedMeetingId(meeting.meetingStartTimestamp)
                                             setMobileDetailOpen(true)
+                                            setActiveDetailTab("summary")
                                         }}
                                     />
                                 ))}
@@ -289,6 +301,7 @@ export default function MeetingsView() {
                             operation={operation}
                             onOperationChange={setOperation}
                             onRegisterCancel={registerCancel}
+                            onOpenChat={() => setActiveDetailTab("chat")}
                         />
                     </>
                 ) : null
@@ -301,6 +314,9 @@ export default function MeetingsView() {
                         onRenamed={(newTitle) => handleRenamed(selectedEntry.index, newTitle)}
                         onNotesSave={(userNotes) => handleNotesSaved(selectedEntry.index, userNotes)}
                         onToggleActionItem={(itemIndex) => handleActionItemToggled(selectedEntry.index, itemIndex)}
+                        onChatSessionChange={(messages) => handleChatSessionChanged(selectedEntry.index, messages)}
+                        activeTab={activeDetailTab}
+                        onTabChange={setActiveDetailTab}
                         operation={operation}
                         onOperationChange={setOperation}
                         onRegisterCancel={registerCancel}

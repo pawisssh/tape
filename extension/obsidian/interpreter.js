@@ -30,6 +30,7 @@ import {
     renderChatBody,
 } from "./markdown.js"
 import { parseTemplateSegments, applyFilters, formatTimestampSuffix, formatAssigneeSuffix } from "./template-syntax.js"
+import { outputLanguageInstruction } from "./output-language.js"
 
 // Token parsing (parseTemplateSegments) and the filter pipeline (applyFilters,
 // formatTimestampSuffix, formatAssigneeSuffix) live in template-syntax.js — shared with
@@ -230,9 +231,10 @@ function describeShape(instr) {
 /**
  * @param {Meeting} meeting
  * @param {CollectedInstruction[]} instructions
+ * @param {OutputLanguage} [outputLanguage] appends a language directive unless "auto" — kept in the user prompt so it also applies to a customized system prompt
  * @returns {string}
  */
-export function buildInterpreterUserPrompt(meeting, instructions) {
+export function buildInterpreterUserPrompt(meeting, instructions, outputLanguage) {
     const preamble = buildTranscriptPreamble(meeting)
     if (!instructions || instructions.length === 0) {
         return preamble
@@ -242,6 +244,8 @@ export function buildInterpreterUserPrompt(meeting, instructions) {
         lines.push(`- ${instr.id} (respond as ${describeShape(instr)}): "${instr.instruction}"`)
     }
     lines.push("", `Respond with one JSON object whose keys are exactly: ${instructions.map((i) => i.id).join(", ")}.`)
+    const languageInstruction = outputLanguageInstruction(outputLanguage)
+    if (languageInstruction) lines.push(languageInstruction)
     return lines.join("\n")
 }
 

@@ -64,7 +64,7 @@ export default function ObsidianSection() {
                     type="text"
                     id="obsidian-folder"
                     className="mt-2 rounded-none"
-                    placeholder="Meetings/TranscripTonic"
+                    placeholder="Meetings/Tape"
                     value={folder}
                     onChange={(e) => setFolder(e.target.value)}
                 />

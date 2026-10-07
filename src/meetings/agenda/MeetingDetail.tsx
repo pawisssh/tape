@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react"
 import { toast } from "@/components/ui/toast"
 import { writeTextWithFallback } from "@/lib/clipboard"
 import MeetingHeaderStats from "./MeetingHeaderStats"
-import DetailTabs from "./DetailTabs"
+import DetailTabs, { type MeetingDetailTab } from "./DetailTabs"
 import ContextExceededDialog from "./ContextExceededDialog"
 // Framework-free logic module, imported directly — never duplicated into src/. See
 // PLAN.md §6 Phase 5 "Structural rule to preserve". Run now does the whole Save-to-
@@ -16,6 +16,9 @@ interface MeetingDetailProps {
     onRenamed: (newTitle: string) => void
     onNotesSave: (userNotes: string) => void
     onToggleActionItem: (itemIndex: number) => void
+    onChatSessionChange: (messages: TranscriptChatMessage[]) => void
+    activeTab: MeetingDetailTab
+    onTabChange: (tab: MeetingDetailTab) => void
     // Lifted to MeetingsView.tsx (the shared parent of this component and
     // MeetingDetailToolbar.tsx, which triggers the other kind of operation — a template-
     // change regeneration) and keyed by meeting id so a stale resolution for a meeting the
@@ -53,6 +56,9 @@ export default function MeetingDetail({
     onRenamed,
     onNotesSave,
     onToggleActionItem,
+    onChatSessionChange,
+    activeTab,
+    onTabChange,
     operation,
     onOperationChange,
     onRegisterCancel,
@@ -152,6 +158,9 @@ export default function MeetingDetail({
                 }}
                 onToggleActionItem={onToggleActionItem}
                 onNotesSave={onNotesSave}
+                onChatSessionChange={onChatSessionChange}
+                activeTab={activeTab}
+                onTabChange={onTabChange}
             />
 
             {contextDialog && (

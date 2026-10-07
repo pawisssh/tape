@@ -133,6 +133,14 @@ describe("getObsidianSettings / setObsidianSettings", () => {
         assert.equal(settings.obsidianLlmApiKey, undefined)
         assert.equal(settings.obsidianLlmTimeoutMs, 600000)
         assert.deepEqual(settings.obsidianLlmSummaryTemplates, [])
+        assert.equal(settings.outputLanguage, "auto")
+    })
+
+    test("reads the AI output language, falling back to auto for unknown values", async () => {
+        await setObsidianSettings(/** @type {any} */ ({ outputLanguage: "th" }))
+        assert.equal((await getObsidianSettings()).outputLanguage, "th")
+        await setObsidianSettings(/** @type {any} */ ({ outputLanguage: "fr" }))
+        assert.equal((await getObsidianSettings()).outputLanguage, "auto")
     })
 
     test("round-trips saved sync-only settings", async () => {

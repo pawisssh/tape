@@ -141,11 +141,22 @@ export function registerContentScript(platform, showNotification = true) {
                     chrome.scripting
                         .getRegisteredContentScripts()
                         .then((scripts) => {
-                            let isRegistered = scripts.some(s => s.id === config.id)
+                            const registered = scripts.find(s => s.id === config.id)
 
-                            if (isRegistered) {
-                                console.log(`${p} content script already registered`)
-                                resolve(`Content script already registered`)
+                            if (registered) {
+                                // Dynamic registrations survive extension updates. Refresh
+                                // their file list so newly added scripts are injected too.
+                                chrome.scripting.updateContentScripts([{
+                                    id: config.id,
+                                    js: config.js,
+                                    matches: allowedMatches,
+                                    excludeMatches: config.excludeMatches,
+                                    runAt: "document_end",
+                                }]).then(() => resolve(`Content script updated`))
+                                    .catch((error) => {
+                                        console.error(`${p} registration update failed.`, error)
+                                        reject(`Failed to update content script`)
+                                    })
                             } else {
                                 chrome.scripting.registerContentScripts([{
                                     id: config.id,

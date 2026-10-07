@@ -1,4 +1,4 @@
-let# Implementation Plan: Fork transcriptonic → `tape`
+# Implementation Plan: Tape
 
 **Document type:** Hand-off spec for an implementing AI. Written by the tech-lead session; the same tech-lead session will review the work against this document once implementation is reported complete. Follow it directly — do not re-derive the architecture decisions below, they are the result of prior research and are settled unless explicitly marked "confirm."
 

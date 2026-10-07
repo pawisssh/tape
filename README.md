@@ -1,50 +1,34 @@
-# TranscripTonic
+# Tape
 Simple Google Meet transcripts. Private and open source. 
 > Teams and Zoom transcripts in beta. <a href="https://github.com/vivek-nexus/transcriptonic/wiki/Zoom-and-Teams-beta-testing" target="_blank">Learn
           more</a>.
-
-![marquee-large](/assets/marquee-large.png)
 
 Extension status: 🟢 OPERATIONAL (v3.4.2)
 
 <br />
 <br />
 
-
-
-# Demo
-View video on [YouTube](https://www.youtube.com/watch?v=ARL6HbkakX4)
-
-![demo](/assets/demo.gif)
-
-
-<br />
-<br />
-
-
 # Installation
-<a href="https://chromewebstore.google.com/detail/ciepnfnceimjehngolkijpnbappkkiag" target="_blank">
-    <img src="https://developer.chrome.com/static/docs/webstore/branding/image/iNEddTyWiMfLSwFD6qGq.png" />
-</a>
+Run npm install and npm run build, then open chrome://extensions, enable Developer mode, and load the generated dist folder as an unpacked extension.
 
 <br />
 <br />
 
-# How to use TranscripTonic
+# How to use Tape
 ![screenshot-2](/assets/screenshot-2.png)
-TranscripTonic has two modes of operation.
+Tape has two modes of operation.
 
 **In both modes, transcript will be downloaded as a text file at the end of each meeting.**
 
 - **Auto mode:** Automatically records transcripts for all meetings
-- **Manual mode:** Switch on TranscripTonic by clicking on captions icon in Google Meet (CC icon)
+- **Manual mode:** Switch on Tape by clicking on captions icon in Google Meet (CC icon)
 
 
 <br />
 <br />
 
-# Integrating TranscripTonic with other tools using webhooks
-You can integrate TranscripTonic with any tool that accepts data from a webhook. Refer the "Set up webhooks" page in the extension for details about the webhook body.
+# Integrating Tape with other tools using webhooks
+You can integrate Tape with any tool that accepts data from a webhook. Refer the "Set up webhooks" page in the extension for details about the webhook body.
 - [Google Docs integration guide](https://github.com/vivek-nexus/transcriptonic/wiki/Google-Docs-integration-guide?utm_source=readme)
 - [n8n integration guide](https://github.com/vivek-nexus/transcriptonic/wiki/n8n-integration-guide?utm_source=readme)
 
@@ -64,7 +48,7 @@ This fork can also hand a meeting's transcript straight to an [Obsidian](https:/
 
 **1. Can I change the language of the transcript?**
 
-Yes. TranscripTonic picks up the output of Google Meet captions. Google Meet captions supports variety of languages that you can choose from. Click the settings icon when captions start showing and change the language.
+Yes. Tape picks up the output of Google Meet captions. Google Meet captions supports variety of languages that you can choose from. Click the settings icon when captions start showing and change the language.
 
 **2. I did not get any transcript at the end of the meeting.**
 
@@ -74,13 +58,13 @@ This could happen when:
 
 When this happens, it might be possible to recover the transcript, but recovery should be done before starting another meeting.
 - Open the extension and click on "Open meetings". Click on the "Recover last meeting" button on the Meetings page.
-- TranscripTonic will also attempt to auto-recover any missed transcripts, just before a new meeting starts.
+- Tape will also attempt to auto-recover any missed transcripts, just before a new meeting starts.
 
 <br />
 <br />
 
 # Privacy policy
-TranscripTonic Chrome extension does not collect any information from users in any manner, except anonymous errors and transcript download timestamp. All processing/transcript storage happens within the user's Chrome browser and does not leave the device, unless you explicitly configure one of the following, in which case transcript content (and, for an AI provider, whatever the provider itself requires — e.g. an API key) is sent to the endpoint you specify:
+Tape Chrome extension does not collect any information from users in any manner, except anonymous errors and transcript download timestamp. All processing/transcript storage happens within the user's Chrome browser and does not leave the device, unless you explicitly configure one of the following, in which case transcript content (and, for an AI provider, whatever the provider itself requires — e.g. an API key) is sent to the endpoint you specify:
 - a webhook, and choose to post transcript data to your webhook URL;
 - an AI provider (for Obsidian summaries) — a local server (LM Studio, Ollama) keeps everything on-device, but a cloud/remote provider sends transcript content to that provider's own servers for processing.
 
@@ -94,3 +78,11 @@ The transcript may not always be accurate and is only intended to aid in improvi
 
 <br />
 <br />
+
+### Live Rewind and Recap
+
+During a captured Meet, Teams, or Zoom meeting, click **Rewind** or **Recap** in the floating widget or its in-page transcript dropdown. Rewind shows captions received in the last 15 seconds immediately, then asks the selected AI provider/model to interpret them. Recap summarizes captured transcript text from the start through the moment of the request, including the current unfinished caption block. It keeps an overview plus decisions, action items, and unresolved questions, and saves a validated in-progress checkpoint so later presses process only new text. A change of model, transcript, or recap format rebuilds that checkpoint from the meeting transcript. For a long meeting, it may pause after a few chunks; the dropdown shows progress and another press continues from the checkpoint. The final meeting summary still runs through the usual flow.
+
+The same dropdown has a **Note** tab above the live transcript. Click a transcript line to link that speech to a note, write in the text area, then save. Notes can also be saved without a linked line. The floating note button opens this tab directly; linked speech is included with the note in the finalized meeting.
+
+These explicit actions work independently of automatic summary settings. They do not finalize a meeting, export it, or overwrite its final summary. Captions must be enabled and an AI provider/model selected in Integrations. The 15-second window uses caption arrival times, rather than audio or word-level timestamps.

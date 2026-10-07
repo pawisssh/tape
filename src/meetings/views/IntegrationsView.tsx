@@ -216,7 +216,7 @@ export default function IntegrationsView({ initialSelectedId }: IntegrationsView
             content={
                     <div className="flex flex-col">
                         <p className="px-4 pt-4 pb-2 text-sm text-meetings-ink-muted">
-                            Connect TranscripTonic to the tools you already use.
+                            Connect Tape to the tools you already use.
                         </p>
                         <GroupLabel>Platforms</GroupLabel>
                         <div className="flex h-16 items-center gap-3 px-4">

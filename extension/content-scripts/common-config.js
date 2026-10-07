@@ -1,9 +1,9 @@
 /** @type {ExtensionStatusJSON} */
 const extensionStatusJSON_bug = {
     "status": 400,
-    "message": `<strong>TranscripTonic encountered a new error</strong> <br /> Please report it <a href="https://github.com/vivek-nexus/transcriptonic/issues" target="_blank">here</a>.`
+    "message": `<strong>Tape encountered a new error</strong> <br /> Please report it <a href="https://github.com/pawisssh/tape/issues" target="_blank">here</a>.`
 }
-const reportErrorMessage = "There is a bug in TranscripTonic. Please report it at https://github.com/vivek-nexus/transcriptonic/issues"
+const reportErrorMessage = "There is a bug in Tape. Please report it at https://github.com/pawisssh/tape/issues"
 const LOG_ERROR_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbz0VFUYIke1WK12Q-8y-zQ91bOPRZ8dAL4cRpm309IYZO0k6uYDkTSlfbWFaGvUV_Z-JQ/exec"
 
 
@@ -17,6 +17,8 @@ const FAB_BRAND_MARK_IDLE_URL = chrome.runtime.getURL("extension/fab-brand-mark-
 const FAB_RECORDING_ICON_URL = chrome.runtime.getURL("extension/fab-recording-icon.svg")
 const FAB_PLAY_ICON_URL = chrome.runtime.getURL("extension/fab-play-icon.svg")
 const FAB_NOTE_ICON_URL = chrome.runtime.getURL("extension/fab-note-icon.svg")
+const FAB_REWIND_ICON_URL = chrome.runtime.getURL("extension/fab-rewind-icon.svg")
+const FAB_RECAP_ICON_URL = chrome.runtime.getURL("extension/fab-recap-icon.svg")
 const FAB_MENU_ICON_URL = chrome.runtime.getURL("extension/fab-menu-icon.svg")
 const commonCSS = `background: rgba(44, 44, 46, 0.92);
     color: rgba(255, 255, 255, 0.87);
@@ -41,15 +43,15 @@ const commonCSS = `background: rgba(44, 44, 46, 0.92);
 
 const NOTIFICATION_PLATFORM_CONFIGS = {
     "google_meet": {
-        notificationText: "<strong>TranscripTonic is running</strong> <br /> Do not turn off captions",
+        notificationText: "<strong>Tape is running</strong> <br /> Do not turn off captions",
         statusUrl: "https://ejnana.github.io/transcripto-status/status-prod-meet.json"
     },
     "teams": {
-        notificationText: "<b>TranscripTonic is ready, enabling captions...</b> <br /> Please enable manually if not successful (More > Captions)",
+        notificationText: "<b>Tape is ready, enabling captions...</b> <br /> Please enable manually if not successful (More > Captions)",
         statusUrl: "https://ejnana.github.io/transcripto-status/status-prod-teams.json"
     },
     "zoom": {
-        notificationText: "TranscripTonic is ready <br /> <b>Please switch on Zoom captions to begin (More > Captions)</b>",
+        notificationText: "Tape is ready <br /> <b>Please switch on Zoom captions to begin (More > Captions)</b>",
         statusUrl: "https://ejnana.github.io/transcripto-status/status-prod-zoom.json"
     }
 }

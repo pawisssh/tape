@@ -1,17 +1,18 @@
-import { useState } from "react"
 import { cn } from "@/lib/utils"
 import { PlayArrowFillIcon } from "../ui/icons"
 import SummaryPanel from "../summary/SummaryPanel"
 import TranscriptTab from "./TranscriptTab"
 import NotesTab from "./NotesTab"
+import TranscriptChatTab from "./TranscriptChatTab"
 import OperationStatusBar from "./OperationStatusBar"
 
-type Tab = "summary" | "transcript" | "notes"
+export type MeetingDetailTab = "summary" | "transcript" | "notes" | "chat"
 
-const TABS: { id: Tab; label: string }[] = [
+const TABS: { id: MeetingDetailTab; label: string }[] = [
     { id: "summary", label: "Summary" },
     { id: "transcript", label: "Transcript" },
     { id: "notes", label: "Notes" },
+    { id: "chat", label: "AI Chat" },
 ]
 
 interface DetailTabsProps {
@@ -21,9 +22,12 @@ interface DetailTabsProps {
     onDismissStatus: () => void
     onToggleActionItem: (itemIndex: number) => void
     onNotesSave: (userNotes: string) => void
+    onChatSessionChange: (messages: TranscriptChatMessage[]) => void
+    activeTab: MeetingDetailTab
+    onTabChange: (tab: MeetingDetailTab) => void
 }
 
-// Summary/Transcript/Notes as real switchable tabs, with RUN in the same row (a
+// Summary/Transcript/Notes/AI Chat as real switchable tabs, with RUN in the same row (a
 // rename/restyle of the existing "Save to Obsidian" action — same handler, just promoted
 // next to the tab bar instead of sitting below it). `statusLabel` (non-null while either a
 // template-triggered regeneration or a Run is in flight for this meeting — see
@@ -41,9 +45,10 @@ export default function DetailTabs({
     onDismissStatus,
     onToggleActionItem,
     onNotesSave,
+    onChatSessionChange,
+    activeTab,
+    onTabChange,
 }: DetailTabsProps) {
-    const [activeTab, setActiveTab] = useState<Tab>("summary")
-
     return (
         <div className="flex flex-1 flex-col">
             <div className="sticky top-0 z-10 flex h-16 w-full items-stretch">
@@ -51,7 +56,7 @@ export default function DetailTabs({
                     <button
                         key={tab.id}
                         type="button"
-                        onClick={() => setActiveTab(tab.id)}
+                        onClick={() => onTabChange(tab.id)}
                         className={cn(
                             "font-meetings-heading flex flex-1 flex-col items-center justify-center border-b p-2 text-xs font-normal uppercase",
                             i < TABS.length - 1 && "border-r border-r-meetings-border",
@@ -80,6 +85,9 @@ export default function DetailTabs({
                 ) : null}
                 {activeTab === "transcript" ? <TranscriptTab transcript={meeting.transcript} /> : null}
                 {activeTab === "notes" ? <NotesTab key={meeting.meetingStartTimestamp} meeting={meeting} onSave={onNotesSave} /> : null}
+                {activeTab === "chat" ? (
+                    <TranscriptChatTab meeting={meeting} onSessionChange={onChatSessionChange} />
+                ) : null}
             </div>
 
             {statusLabel ? <OperationStatusBar label={statusLabel} onDismiss={onDismissStatus} /> : null}

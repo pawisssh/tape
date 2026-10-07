@@ -91,6 +91,39 @@ describe("pickupLastMeetingFromStorage", () => {
         assert.match(meetings[0].userNotes, /Follow up with Sam about pricing/)
     })
 
+    test("saves a note-only meeting even if captions never arrived", async () => {
+        seedTranscript("placeholder")
+        fakeStorageState.local.transcript = []
+        fakeStorageState.local.liveCommentNotes = [{ timestamp: "2026-08-26T10:05:00.000Z", text: "Remember the decision" }]
+
+        await pickupLastMeetingFromStorage()
+
+        assert.equal(fakeStorageState.local.meetings.length, 1)
+        assert.equal(fakeStorageState.local.meetings[0].transcript.length, 0)
+        assert.match(fakeStorageState.local.meetings[0].userNotes, /Remember the decision/)
+    })
+
+    test("keeps a note's selected speech when the meeting is finalized", async () => {
+        seedTranscript("I can send the proposal tomorrow.")
+        fakeStorageState.local.liveCommentNotes = [{
+            timestamp: "2026-08-26T10:06:00.000Z",
+            text: "Check the owner",
+            linkedTranscript: {
+                personName: "Alex",
+                timestamp: "2026-08-26T10:00:05.000Z",
+                transcriptText: "I can send the proposal tomorrow.",
+                blockIndex: 0,
+            },
+        }]
+
+        await pickupLastMeetingFromStorage()
+
+        const notes = fakeStorageState.local.meetings[0].userNotes
+        assert.match(notes, /Linked to Alex/)
+        assert.match(notes, /I can send the proposal tomorrow\./)
+        assert.match(notes, /Check the owner/)
+    })
+
     test("leaves userNotes unset when no live comment notes were captured", async () => {
         seedTranscript("we should use k8s for this")
 

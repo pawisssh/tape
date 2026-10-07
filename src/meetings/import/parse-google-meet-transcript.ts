@@ -5,7 +5,7 @@
 // tail of the previous turn's message.
 const HEADER_RE = /([^\n(]{1,60}?)\s*\((\d{1,2})\/(\d{1,2})\/(\d{4}),\s*(\d{1,2}):(\d{2})\s*([AP]M)\)/g
 
-// TranscripTonic-style exports append a dashes-delimited "CHAT MESSAGES" section and a
+// Tape-style exports append a dashes-delimited "CHAT MESSAGES" section and a
 // "Transcript saved using..." credit block after the real transcript. Neither has headers of
 // its own, so without this cut it silently gets glued onto the last turn's transcriptText.
 const FOOTER_RE = /\n-{3,}\s*\n/

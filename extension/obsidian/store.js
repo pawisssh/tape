@@ -10,6 +10,7 @@
 import { DEFAULT_FILENAME_TEMPLATE } from "./markdown.js"
 import { DEFAULT_LLM_TIMEOUT_MS } from "./llm.js"
 import { getProviders, getActiveModel } from "./providers.js"
+import { normalizeOutputLanguage } from "./output-language.js"
 import { INTERPRETER_SYSTEM_PROMPT } from "./interpreter.js"
 
 const CLIPBOARD_LOCK_KEY = "obsidianClipboardLock"
@@ -115,6 +116,7 @@ export function getObsidianSettings() {
                 "obsidianLlmAutoRun",
                 "obsidianLlmSummaryTemplates",
                 "obsidianLlmSystemPrompt",
+                "outputLanguage",
             ], function (resultSyncUntyped) {
                 resolve(/** @type {ResultSync} */ (resultSyncUntyped))
             })
@@ -136,6 +138,7 @@ export function getObsidianSettings() {
         obsidianLlmSummaryTemplates: resultSync.obsidianLlmSummaryTemplates || [],
         obsidianLlmTimeoutMs: resultSync.obsidianLlmTimeoutMs || DEFAULT_LLM_TIMEOUT_MS,
         obsidianLlmSystemPrompt: resultSync.obsidianLlmSystemPrompt || INTERPRETER_SYSTEM_PROMPT,
+        outputLanguage: normalizeOutputLanguage(resultSync.outputLanguage),
     }))
 }
 

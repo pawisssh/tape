@@ -13,7 +13,7 @@ describe("joinObsidianPath", () => {
     })
 
     test("trims stray leading/trailing/duplicate slashes in the folder", () => {
-        assert.equal(joinObsidianPath("/Meetings/TranscripTonic/", "Note.md"), "Meetings/TranscripTonic/Note.md")
+        assert.equal(joinObsidianPath("/Meetings/Tape/", "Note.md"), "Meetings/Tape/Note.md")
         assert.equal(joinObsidianPath("Meetings//Sub", "Note.md"), "Meetings/Sub/Note.md")
     })
 })

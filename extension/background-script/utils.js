@@ -33,8 +33,8 @@ export function getTranscriptString(transcript) {
 }
 
 /**
- * Formats the live comment notes captured mid-meeting from the floating widget's note
- * panel (see extension/content-scripts/common-utils.js's renderFab()) into the same plain
+ * Formats the live comment notes captured mid-meeting from the floating widget's Note
+ * tab (see extension/content-scripts/live-panel.js) into the same plain
  * text shape as Meeting.userNotes, one timestamp header + text per note, so the result can
  * be dropped straight into a fresh meeting's userNotes with no further transformation (see
  * pickupLastMeetingFromStorage() in meetings.js). Pure — never mutates `liveCommentNotes`.
@@ -45,6 +45,13 @@ export function formatCommentNotesAsUserNotes(liveCommentNotes) {
     if (liveCommentNotes && liveCommentNotes.length > 0) {
         liveCommentNotes.forEach(note => {
             notesString += `${new Date(note.timestamp).toLocaleString("default", TIMEFORMAT).toUpperCase()}\n`
+            if (note.linkedTranscript?.transcriptText) {
+                const speech = note.linkedTranscript
+                const time = Number.isFinite(Date.parse(speech.timestamp))
+                    ? new Date(speech.timestamp).toLocaleTimeString("default", TIMEFORMAT)
+                    : ""
+                notesString += `Linked to ${speech.personName}${time ? ` · ${time}` : ""}: ${speech.transcriptText}\n`
+            }
             notesString += note.text
             notesString += "\n\n"
         })
@@ -96,7 +103,7 @@ export function applyDictionaryReplacements(transcript, words) {
 
 /**
  * Format chat messages into string
- * @param {ChatMessage[] | []} chatMessages
+ * @param {ChatMessage[]} chatMessages
  */
 export function getChatMessagesString(chatMessages) {
     let chatMessagesString = ""

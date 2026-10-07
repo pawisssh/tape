@@ -45,20 +45,20 @@ unmodified from upstream behavior.
 
 ### Step A: configure the Obsidian settings in the extension UI
 
-1. Click the TranscripTonic extension icon, or open `chrome://extensions`, find
-   TranscripTonic, and click "Details" → "Extension options" — either way, get to the
+1. Click the Tape extension icon, or open `chrome://extensions`, find
+   Tape, and click "Details" → "Extension options" — either way, get to the
    meetings page (`meetings.html`). You can also open it directly by clicking "last 10
    meetings" from the popup, or navigating to
    `chrome-extension://<your-extension-id>/meetings.html`.
 2. Scroll to the **"Save transcripts to Obsidian"** section (it's the first settings
-   section on the page, above "Integrate TranscripTonic with your favourite tools").
+   section on the page, above "Integrate Tape with your favourite tools").
 3. In **Vault name**, enter the exact name of your Obsidian vault as shown in Obsidian's
    vault switcher (Settings icon → vault name at the top, or the vault-switcher popup in
    the left sidebar). This is case-sensitive and must match exactly — e.g. if your vault
    is named `Work Notes`, type `Work Notes`, not `work notes` or `WorkNotes`.
 4. In **Folder (optional)**, enter a vault-relative folder path that **already exists**
-   in your vault, e.g. `Meetings/TranscripTonic`. Leave blank to save notes to the vault
-   root. TranscripTonic does not create folders — Obsidian will silently fail to place
+   in your vault, e.g. `Meetings/Tape`. Leave blank to save notes to the vault
+   root. Tape does not create folders — Obsidian will silently fail to place
    the note in a non-existent folder (behavior depends on your Obsidian version), so
    create the folder in Obsidian first if you use one.
 5. In **Filename template**, leave the default `{{date}} - {{title}}`, or try a more
@@ -158,7 +158,7 @@ unmodified from upstream behavior.
   only means the extension successfully launched the handoff (and, for large notes,
   copied to the clipboard) — it is never proof the `.md` file exists in your vault.
   Always visually confirm the note in Obsidian itself.
-- The destination folder must already exist in the vault; TranscripTonic does not
+- The destination folder must already exist in the vault; Tape does not
   create folders.
 - The vault name must match Obsidian's vault switcher exactly, including case.
 - For a long transcript, the note is delivered via the OS clipboard instead of being
@@ -201,7 +201,7 @@ from before this round of changes (Phase 4 added new files/settings).
    - Click **Allow**. Confirm the checkbox stays checked afterward.
 7. Reload `meetings.html` (or revisit it later) and confirm the checkbox still shows
    checked — the granted permission plus `obsidianUseLlm: true` should both persist.
-8. As a negative check: open `chrome://extensions` → TranscripTonic → "Details", find
+8. As a negative check: open `chrome://extensions` → Tape → "Details", find
    the granted host permission for your endpoint's host, and remove it. Reload
    `meetings.html` — confirm the checkbox now shows **unchecked** (the UI must never
    claim the feature is "on" without the matching permission actually being granted).
@@ -311,7 +311,7 @@ errors (documented in this file's history — see the Phase 2 entries — none o
 3. Open `chrome://extensions`, confirm **zero errors** are shown for the extension
    (click "Errors" if the button appears — it should not).
 4. Click the extension icon to open the **popup**. Confirm:
-   - It renders correctly (TranscripTonic heading, icon, platform checkboxes, auto/manual
+   - It renders correctly (Tape heading, icon, platform checkboxes, auto/manual
      mode radio buttons, hide-captions checkbox, webhook blurb, footer links, version
      number).
    - Open the browser DevTools console for the popup (right-click the popup → Inspect)
@@ -365,7 +365,7 @@ errors (documented in this file's history — see the Phase 2 entries — none o
     clipboard" step still shows **Done** — this exercises the window-focus-forcing +
     `execCommand("copy")` fallback added to fix the
     `[obsidian-handoff] clipboard write failed [object DOMException]` bug. Then open
-    `chrome://extensions` (or `edge://extensions`), find the TranscripTonic card, and
+    `chrome://extensions` (or `edge://extensions`), find the Tape card, and
     click **Errors** — confirm no new errors were logged for this run.
 
 ### Step E: Base UI primitives — keyboard nav and focus behavior
@@ -422,3 +422,17 @@ actually work correctly — verify by hand, not just by reading the code:
 | D (Obsidian handoff status stepper) | | | |
 | D2 (clipboard copy while handoff tab unfocused + no new errors console) | 2026-08-26 | Pass | Rebuilt, reloaded unpacked from `dist/`, retested end-to-end. |
 | E (Base UI keyboard nav / focus / DOM inspection) | | | |
+
+## Live Rewind and Recap
+
+1. Reload the built extension and open a new Meet, Teams, or Zoom meeting with capture and captions enabled. Select a working provider/model in Integrations.
+2. Speak continuously for more than 30 seconds. Click Rewind in the floating widget: the in-page dropdown immediately shows the captured captions from the last 15 seconds, then adds the AI interpretation. Include recent words from the same speaker's ongoing block. After 15 seconds of no caption updates, Rewind should report no recent captions.
+3. Click Recap before the current caption block is finalized. Confirm the result covers the beginning of the meeting and the latest buffered text. Continue the discussion and click Recap again; the cutoff time and summary should update.
+4. Establish a decision, an action with an owner and deadline, and an unresolved question. Add enough later discussion for multiple recap chunks, then press Recap again. Confirm these earlier facts remain visible even if the new overview is shorter; repeats appear only once. Explicitly correct a decision or deadline and confirm the older version is replaced only when the new transcript supports the correction.
+5. Change the selected model and repeat either action. Confirm the result identifies the newly selected model. Confirm both buttons disable during a request and results/errors are readable and dismissible.
+6. Check before capture starts, with no transcript yet, with no selected model, and with an unavailable provider. Confirm informative errors and no capture interruption. For a long transcript, Recap should show progress if it cannot finish in one request; pressing again should continue without repeating earlier chunks. Changing the selected model should rebuild its recap from the start.
+7. End the meeting and verify the saved transcript, notes, normal final summary, and export behavior remain intact. Start another meeting and verify prior live results and caption buffers do not carry over.
+8. Open the meeting as an installed web app. Click the brand/menu button to toggle the transcript dropdown, and Rewind/Recap to open their tabs directly with an AI result. The upper half shows the selected tool and the lower half keeps the live transcript visible. No browser sidebar should open. Check Escape, the close button, clicking outside, narrow windows, moving the widget near each screen edge, and resizing. The dropdown stays on screen and follows the widget; starting a new meeting clears the old panel.
+9. Update an installed older version with Meet/Teams/Zoom capture already enabled. Reload the meeting page and confirm captions and the dropdown both work without toggling platform permissions. In a narrow window, verify Rewind and Recap remain available inside the dropdown when the floating widget hides their direct buttons.
+10. Check that the black timer segment ends close to the time text at 0:00:00 and after the meeting runs longer; it must still show every digit if the hour gains another digit. Before joining, the Note/Rewind/Recap buttons remain collapsed.
+11. Click the floating Note button. In the dropdown, select a transcript line, write a note, and save. Confirm the selected speaker and speech appear above the text area, the saved note clears the text area, and the finalized meeting's Notes include both the note and linked speech. Repeat with no line selected. Confirm the note still saves. A meeting with notes but no captions should still be saved.

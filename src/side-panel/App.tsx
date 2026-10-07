@@ -3,8 +3,10 @@
 // "meetingTitle"/"transcript" keys, and the "broadcast_live_buffer" runtime message
 // carrying the in-progress `stateTranscriptBlock` (content script -> side panel, see
 // types/index.js's ExtensionMessage). Only the rendering changed.
-import { useEffect, useLayoutEffect, useRef, useState } from "react"
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react"
 import { getLocal, onStorageChanged, setLocal } from "@/lib/chrome-storage"
+
+import { useLiveCaptureState } from "@/meetings/use-live-capture-state"
 
 const SCROLL_THRESHOLD = 50
 
@@ -45,6 +47,50 @@ export default function App() {
     const [meetingTitle, setMeetingTitle] = useState("Live Meeting Transcript")
     const [transcript, setTranscript] = useState<TranscriptBlock[]>([])
     const [liveBlock, setLiveBlock] = useState<StateTranscriptBlock | null>(null)
+
+    const { isCapturing } = useLiveCaptureState()
+    const [assist, setAssist] = useState<{ mode: "rewind" | "recap"; text: string; raw?: string; error?: boolean; model?: string; capturedAt?: string; progress?: string } | null>(null)
+    const [busy, setBusy] = useState(false)
+    const busyRef = useRef(false)
+    const requestRef = useRef(0)
+    const runAssist = useCallback(async (mode: "rewind" | "recap") => {
+        if (busyRef.current) return
+        busyRef.current = true
+        setBusy(true)
+        setAssist({ mode, text: mode === "rewind" ? "Recalling the last 15 seconds…" : "Summarizing the meeting so far…" })
+        const request = ++requestRef.current
+        try {
+            if (mode === "rewind") {
+                const preview: ExtensionResponse = await chrome.runtime.sendMessage({ type: "live_assist_preview", mode })
+                if (request !== requestRef.current) return
+                if (preview.success && typeof preview.message === "string") {
+                    setAssist(current => current?.mode === mode ? { ...current, raw: preview.message as string } : current)
+                }
+            }
+            const response: ExtensionResponse = await chrome.runtime.sendMessage({ type: "live_assist", mode })
+            if (request !== requestRef.current) return
+            setAssist(current => ({ mode, raw: current?.mode === mode ? current.raw : undefined, text: typeof response?.message === "string" ? response.message : "AI could not generate a response. Try again.", error: !response?.success, model: response?.model, capturedAt: response?.capturedAt, progress: response?.progress }))
+        } catch {
+            if (request === requestRef.current) setAssist({ mode, text: "Could not reach the extension. Try again.", error: true })
+        } finally {
+            if (request === requestRef.current) {
+                busyRef.current = false
+                setBusy(false)
+            }
+        }
+    }, [])
+
+    useEffect(() => {
+        return onStorageChanged((changes, area) => {
+            if (area === "local" && changes.meetingStartTimestamp) {
+                requestRef.current++
+                busyRef.current = false
+                setBusy(false)
+                setAssist(null)
+                setLiveBlock(null)
+            }
+        })
+    }, [runAssist])
 
     const containerRef = useRef<HTMLDivElement>(null)
     const stickToBottomRef = useRef(false)
@@ -140,6 +186,25 @@ export default function App() {
                         {meetingTitle}
                     </h1>
                 </div>
+
+                <div className="border-b border-white/12 px-4 py-3">
+                    <div className="flex gap-2">
+                        <button type="button" disabled={!isCapturing || busy} onClick={() => void runAssist("rewind")} className="inline-flex items-center gap-1.5 rounded border border-white/25 px-3 py-2 text-sm disabled:opacity-40" title="Recall captions received in the last 15 seconds"><img src={chrome.runtime.getURL("extension/fab-rewind-icon.svg")} alt="" className="size-5 invert" />Rewind · 15s</button>
+                        <button type="button" disabled={!isCapturing || busy} onClick={() => void runAssist("recap")} className="inline-flex items-center gap-1.5 rounded border border-white/25 px-3 py-2 text-sm disabled:opacity-40" title="Summarize from the start of the meeting up to now"><img src={chrome.runtime.getURL("extension/fab-recap-icon.svg")} alt="" className="size-5 invert" />Recap</button>
+                    </div>
+                    {!isCapturing ? <p className="mt-2 text-xs text-white/50">Start meeting capture to use Rewind and Recap.</p> : null}
+                </div>
+                {assist ? (
+                    <section aria-live="polite" aria-busy={busy} className="max-h-[45vh] overflow-y-auto border-b border-white/12 bg-white/5 p-4">
+                        <div className="mb-2 flex items-center justify-between">
+                            <h2 className="text-sm font-semibold">{assist.mode === "rewind" ? "Rewind · Last 15 seconds" : "Recap · Meeting so far"}</h2>
+                            {!busy ? <button type="button" aria-label="Dismiss AI result" onClick={() => setAssist(null)} className="text-xs text-white/60">Dismiss</button> : null}
+                        </div>
+                        {assist.raw ? <div className="mb-3 rounded bg-white/8 p-2"><p className="mb-1 text-xs text-white/50">Captured captions</p><p className="whitespace-pre-wrap break-words text-sm">{assist.raw}</p></div> : null}
+                        <p className={`whitespace-pre-wrap break-words text-sm leading-relaxed ${assist.error ? "text-red-300" : "text-white/90"}`}>{assist.text}</p>
+                        {assist.progress ? <p className="mt-3 text-xs text-amber-200">{assist.progress}</p> : assist.model ? <p className="mt-3 text-xs text-white/45">{assist.model} · Through {assist.capturedAt ? new Date(assist.capturedAt).toLocaleTimeString() : "now"}</p> : null}
+                    </section>
+                ) : null}
 
                 <div ref={containerRef} className="flex-1 overflow-y-auto p-4">
                     {transcript.map((block, i) => (

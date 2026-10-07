@@ -24,7 +24,7 @@ import { defineManifest } from "@crxjs/vite-plugin"
 // those two are wired in instead.
 export default defineManifest({
     manifest_version: 3,
-    name: "TranscripTonic",
+    name: "Tape",
     version: "3.4.2",
     description: "Simple Google Meet transcripts. Private and open source.",
     action: {
@@ -89,6 +89,8 @@ export default defineManifest({
                 "extension/fab-recording-icon.svg",
                 "extension/fab-play-icon.svg",
                 "extension/fab-note-icon.svg",
+                "extension/fab-rewind-icon.svg",
+                "extension/fab-recap-icon.svg",
                 "extension/fab-menu-icon.svg",
             ],
             matches: [

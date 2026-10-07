@@ -41,6 +41,9 @@
  * @typedef {boolean} HideCaptions hide the captions on the UI by changing height and opacity
  */
 /**
+ * @typedef {"auto" | "en" | "th"} OutputLanguage language every AI analysis (Rewind, Recap, meeting summary) answers in — see extension/obsidian/output-language.js. "auto" matches the transcript's language
+ */
+/**
  * @typedef {"simple" | "advanced"} WebhookBodyType type of webhook body to use
  */
 /**
@@ -76,12 +79,22 @@
  */
 
 /**
+ * @typedef {Object} TranscriptChatMessage One user/assistant turn in the saved AI chat
+ * session for a completed meeting.
+ * @property {string} id stable client-generated id
+ * @property {"user" | "assistant"} role
+ * @property {string} content
+ * @property {string} createdAt ISO timestamp
+ */
+
+/**
  * @typedef {Object} CommentNoteEntry A quick note the user typed during the meeting via the
- * floating widget's note panel (see extension/content-scripts/common-utils.js's renderFab()).
+ * floating widget's Note tab (see extension/content-scripts/live-panel.js).
  * Merged into the finalized meeting's userNotes at meeting end — see
  * formatCommentNotesAsUserNotes() in extension/background-script/utils.js.
  * @property {string} timestamp ISO timestamp of when the note was saved
  * @property {string} text the note text
+ * @property {{personName: string, timestamp: string, transcriptText: string, blockIndex: number}} [linkedTranscript] the selected transcript block, snapshotted when the note was saved
  */
 
 /**
@@ -118,6 +131,7 @@
  * @property {boolean} [llmSummaryIncludesChatMessages] same as llmSummaryIncludesTranscript, for a {{chatMessages}} section. Additive/optional — absent is treated as false.
  * @property {string} [templateOverrideId] id of a SummaryTemplate (or the literal "default") the user explicitly picked for THIS meeting via the header toolbar's Follow-up picker (src/meetings/agenda/FollowUpTemplatePicker.tsx), overriding resolveTemplateForTitle()'s automatic keyword match — see extension/obsidian/llm.js's enrichWithLlm(). Added in the visual redesign, additive/optional — absent means "use automatic resolution as before." A stale id (template since deleted) falls back to automatic resolution rather than erroring.
  * @property {string} [userNotes] freeform per-meeting notes the user typed directly in the Notes tab — no AI involvement, plain user-authored text. Added in the visual redesign, additive/optional — absent/empty means no notes. Exported to Obsidian as the last section of the note, after Transcript/Chat messages — see extension/obsidian/markdown.js's renderNotesSection()/buildMarkdown().
+ * @property {TranscriptChatMessage[]} [transcriptChatMessages] persisted user/assistant turns from the meeting's Chat with AI tab. Additive/optional; absent means no chat session has been started.
  */
 
 /** @typedef {Object} StateTranscriptBlock
@@ -151,7 +165,8 @@
  */
 /**
  * @typedef {Object} ExtensionMessage Message sent by the calling script
- * @property {"new_meeting_started" | "meeting_ended" | "download_transcript_at_index" | "post_webhook_at_index" | "recover_last_meeting" | "get_platform_enablement_status" | "get_platform_permission_status" | "enable_platform" | "disable_platform" | "open_popup" | "open_side_panel" | "broadcast_live_buffer"} type type of message
+ * @property {"new_meeting_started" | "meeting_ended" | "download_transcript_at_index" | "post_webhook_at_index" | "recover_last_meeting" | "get_platform_enablement_status" | "get_platform_permission_status" | "enable_platform" | "disable_platform" | "open_popup" | "open_side_panel" | "broadcast_live_buffer" | "live_assist" | "live_assist_preview" | "get_live_snapshot"} type type of message
+ * @property {"rewind" | "recap"} [mode] live assistance action
  * @property {number} [index] index of the meeting to process
  * @property {Platform | Platform[]} [platform] index of the meeting to process
  * @property {StateTranscriptBlock} [stateTranscriptBlock]
@@ -159,6 +174,10 @@
 
 /**
  * @typedef {Object} ExtensionResponse Response sent by the called script
+ * @property {boolean} [partial] whether a recap still has transcript to process
+ * @property {string} [progress] recap progress for the current snapshot
+ * @property {string} [model] AI model used
+ * @property {string} [capturedAt] snapshot cutoff time
  * @property {boolean} success whether the message was processed successfully as per the request
  * @property {string | string[] | ErrorObject} [message] message explaining success or failure
  */
@@ -198,6 +217,7 @@
  * @property {AutoDownloadFileAfterMeeting} autoDownloadFileAfterMeeting
  * @property {OperationMode} operationMode
  * @property {HideCaptions} hideCaptions
+ * @property {OutputLanguage | undefined} outputLanguage
  * @property {WebhookBodyType} webhookBodyType
  * @property {WebhookUrl} webhookUrl
  * @property {WantGoogleMeet} wantGoogleMeet

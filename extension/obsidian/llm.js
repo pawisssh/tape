@@ -330,6 +330,109 @@ async function getModelContextInfo(endpoint, model, apiKey, signal) {
 }
 
 /**
+ * Independent JSON transport for Live Assist. Obsidian enrichment below keeps
+ * its existing interpreter and output contract.
+ * @param {ObsidianSettings} settings
+ * @param {string} systemPrompt
+ * @param {string} userPrompt
+ * @returns {Promise<{value: Object | null} | {contextExceeded: true, requiredTokens: number, loadedContextLength?: number} | null>}
+ */
+export async function requestLlmJson(settings, systemPrompt, userPrompt) {
+    try {
+        const endpoint = settings.obsidianLlmEndpoint
+        const model = settings.obsidianLlmModel
+        if (!endpoint || !model) return null
+        const requiredTokens = estimateTokenCount(systemPrompt + "\n" + userPrompt)
+        const info = await getModelContextInfo(endpoint, model, settings.obsidianLlmApiKey)
+        const ceiling = info.loadedContextLength ?? info.maxContextLength
+        if (ceiling !== null && suggestedContextWindow(requiredTokens) > ceiling) return { contextExceeded: true, requiredTokens, loadedContextLength: ceiling }
+        const controller = new AbortController()
+        const timer = setTimeout(() => controller.abort(), Math.min(settings.obsidianLlmTimeoutMs || 45000, 45000))
+        try {
+            const response = await fetch(endpoint, {
+                method: "POST",
+                headers: { "Content-Type": "application/json", ...(settings.obsidianLlmApiKey ? { Authorization: `Bearer ${settings.obsidianLlmApiKey}` } : {}) },
+                body: JSON.stringify({ model, temperature: 0.3, stream: false, messages: [
+                    { role: "system", content: systemPrompt }, { role: "user", content: userPrompt },
+                ] }),
+                signal: controller.signal,
+            })
+            if (!response.ok) return await isContextLengthError(response) ? { contextExceeded: true, requiredTokens } : null
+            const body = await response.json()
+            const content = body?.choices?.[0]?.message?.content
+            return typeof content === "string" ? { value: extractJsonFromResponse(content) } : null
+        } finally {
+            clearTimeout(timer)
+        }
+    } catch {
+        return null
+    }
+}
+
+/**
+ * OpenAI-compatible text transport for transcript chat. Unlike requestLlmJson(), this
+ * intentionally preserves Markdown and other natural-language formatting in the model
+ * response. It follows enrichWithLlm()'s failure contract: network/provider failures
+ * resolve to null, context overflow gets an actionable shape, and an externally aborted
+ * request reports stopped instead of looking like a provider failure.
+ * @param {ObsidianSettings} settings
+ * @param {{role: "system" | "user" | "assistant", content: string}[]} messages
+ * @param {AbortSignal} [signal]
+ * @returns {Promise<{value: string} | {contextExceeded: true, requiredTokens: number, loadedContextLength?: number} | {stopped: true} | null>}
+ */
+export async function requestLlmText(settings, messages, signal) {
+    try {
+        const endpoint = settings.obsidianLlmEndpoint
+        const model = settings.obsidianLlmModel
+        if (!endpoint || !model || messages.length === 0) return null
+
+        const promptText = messages.map((message) => `${message.role}: ${message.content}`).join("\n")
+        const requiredTokens = estimateTokenCount(promptText)
+        const info = await getModelContextInfo(endpoint, model, settings.obsidianLlmApiKey, signal)
+        if (signal?.aborted) return { stopped: true }
+        const ceiling = info.loadedContextLength ?? info.maxContextLength
+        if (ceiling !== null && suggestedContextWindow(requiredTokens) > ceiling) {
+            return { contextExceeded: true, requiredTokens, loadedContextLength: ceiling }
+        }
+
+        const controller = new AbortController()
+        const timeoutHandle = setTimeout(() => controller.abort(), settings.obsidianLlmTimeoutMs || DEFAULT_LLM_TIMEOUT_MS)
+        bridgeExternalAbort(controller, signal)
+        /** @type {Response} */
+        let response
+        try {
+            response = await fetch(endpoint, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    ...(settings.obsidianLlmApiKey ? { Authorization: `Bearer ${settings.obsidianLlmApiKey}` } : {}),
+                },
+                body: JSON.stringify({ model, temperature: 0.2, stream: false, messages }),
+                signal: controller.signal,
+            })
+        } catch {
+            return signal?.aborted ? { stopped: true } : null
+        } finally {
+            clearTimeout(timeoutHandle)
+        }
+
+        if (!response.ok) {
+            if (await isContextLengthError(response)) return { contextExceeded: true, requiredTokens }
+            return null
+        }
+
+        /** @type {any} */
+        const body = await response.json()
+        const content = body?.choices?.[0]?.message?.content
+        if (typeof content !== "string") return null
+        const value = content.replace(/<think>[\s\S]*?<\/think>/gi, "").trim()
+        return value ? { value } : null
+    } catch {
+        return signal?.aborted ? { stopped: true } : null
+    }
+}
+
+/**
  * Call the configured local LLM server (if the matched template has any AI
  * instructions at all — an all-variables template skips the network call entirely) and
  * resolve the matched SummaryTemplate's `properties`/`noteContent` against the result,
@@ -403,7 +506,7 @@ export async function enrichWithLlm(meeting, settings, signal) {
         let instructionAnswers = new Map()
 
         if (instructions.length > 0) {
-            const userPrompt = buildInterpreterUserPrompt(meeting, instructions)
+            const userPrompt = buildInterpreterUserPrompt(meeting, instructions, settings.outputLanguage)
             const systemPrompt = settings.obsidianLlmSystemPrompt
             const fullPromptText = systemPrompt + "\n" + userPrompt
 

@@ -89,17 +89,6 @@ function attachTranscriptListenerGoogleMeet(state) {
             // Initial attach and monitor every 2s
             startTranscriptMonitor(state)
             markCaptureRecovered(state)
-
-            // Show confirmation message from extensionStatusJSON, once observation has started, based on operation mode
-            chrome.storage.sync.get(["operationMode"], function (resultSyncUntyped) {
-                const resultSync = /** @type {ResultSync} */ (resultSyncUntyped)
-                if (resultSync.operationMode === "manual") {
-                    showNotificationGoogleMeet({ status: 400, message: "<strong>TranscripTonic is not running</strong> <br /> Turn on captions using the CC icon, if needed" })
-                }
-                else {
-                    showNotificationGoogleMeet(state.extensionStatusJSON)
-                }
-            })
         })
         .catch((err) => {
             console.error(err)

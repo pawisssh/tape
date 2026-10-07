@@ -51,6 +51,11 @@ export const MoreHorizIcon = makeIcon(
     "MoreHorizIcon",
 )
 
+export const ChatBubbleIcon = makeIcon(
+    "M80-80v-720q0-33 23.5-56.5T160-880h640q33 0 56.5 23.5T880-800v480q0 33-23.5 56.5T800-240H240L80-80Zm134-220h586q8 0 14-6t6-14v-480q0-8-6-14t-14-6H160q-8 0-14 6t-6 14v574l74-74Zm-74 0v-520 520Z",
+    "ChatBubbleIcon",
+)
+
 export const CheckCircleFillIcon = makeIcon(
     "m421-298 283-283-46-45-237 237-120-120-45 45 165 166Zm59 218q-82 0-155-31.5t-127.5-86Q143-252 111.5-325T80-480q0-83 31.5-156t86-127Q252-817 325-848.5T480-880q83 0 156 31.5T763-763q54 54 85.5 127T880-480q0 82-31.5 155T763-197.5q-54 54.5-127 86T480-80Z",
     "CheckCircleFillIcon",

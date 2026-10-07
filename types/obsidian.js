@@ -108,6 +108,7 @@
  * @property {ObsidianLlmAutoRun} obsidianLlmAutoRun
  * @property {SummaryTemplate[]} obsidianLlmSummaryTemplates per-meeting-type prompt overrides — see resolveTemplateForTitle() in extension/obsidian/templates.js
  * @property {ObsidianLlmSystemPrompt} obsidianLlmSystemPrompt
+ * @property {OutputLanguage} outputLanguage resolved from sync storage, "auto" when unset
  */
 
 /**

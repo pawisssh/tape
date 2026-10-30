@@ -5,7 +5,7 @@
  * @typedef {"google_meet" | "teams" | "zoom"} Platform Meeting platform
  */
 /**
- * @typedef {number | "processing" | null} MeetingTabId tab id of the meeting tab, captured when meeting starts. A valid value or "processing" indicates that a meeting is in progress. Set to null once meeting ends and associated processing is complete.
+ * @typedef {number | "processing" | null} MeetingTabId tab id of the meeting tab, captured when meeting starts. A valid value or "processing" indicates that a meeting is in progress. Written only by the Meeting lifecycle module (extension/background-script/meetings.js), which sets it to null once finalization and the after-finalize effect are done.
  */
 /**
  * @typedef {Object} MeetingOperation Which meeting has a Run (save-to-Obsidian) or template-regenerate in flight, and what to label the sticky status bar with. Storage-backed (not plain React state) so it survives switching between the Meetings/Integrations/Templates/Settings pages and the mobile list/detail view — see src/meetings/views/MeetingsView.tsx.
@@ -167,6 +167,7 @@
  * @typedef {Object} ExtensionMessage Message sent by the calling script
  * @property {"new_meeting_started" | "meeting_ended" | "download_transcript_at_index" | "post_webhook_at_index" | "recover_last_meeting" | "get_platform_enablement_status" | "get_platform_permission_status" | "enable_platform" | "disable_platform" | "open_popup" | "open_side_panel" | "broadcast_live_buffer" | "live_assist" | "live_assist_preview" | "get_live_snapshot"} type type of message
  * @property {"rewind" | "recap"} [mode] live assistance action
+ * @property {RecoveryContext} [recoveryContext] where "recover_last_meeting" was sent from; defaults to "meetings-page"
  * @property {number} [index] index of the meeting to process
  * @property {Platform | Platform[]} [platform] index of the meeting to process
  * @property {StateTranscriptBlock} [stateTranscriptBlock]
@@ -180,6 +181,18 @@
  * @property {string} [capturedAt] snapshot cutoff time
  * @property {boolean} success whether the message was processed successfully as per the request
  * @property {string | string[] | ErrorObject} [message] message explaining success or failure
+ */
+
+/**
+ * @typedef {"startup" | "meetings-page" | "meeting-join"} RecoveryContext where recovery was asked for — browser startup, the Meetings page opening, or a content script joining a meeting
+ */
+
+/**
+ * @typedef {"nothing-live" | "already-finalized" | "empty" | "finalizing" | "capturing" | "not-meeting-tab"} SkipReason why the Meeting lifecycle module did not finalize anything
+ */
+
+/**
+ * @typedef {{ outcome: "finalized", meeting: Meeting, afterFinalizeError?: ErrorObject } | { outcome: "skipped", reason: SkipReason } | { outcome: "failed", error: ErrorObject }} LifecycleResult result of a Meeting lifecycle entry point (extension/background-script/meetings.js); afterFinalizeError means the Meeting was saved but the download/webhook effect failed
  */
 
 /**
@@ -204,6 +217,7 @@
  * @property {ChatMessages} chatMessages
  * @property {CommentNoteEntry[] | undefined} liveCommentNotes quick notes typed via the floating widget's note panel during the current meeting, dumped by content script
  * @property {IsDeferredUpdatedAvailable | undefined} isDeferredUpdatedAvailable
+ * @property {MeetingStartTimestamp | undefined} lastFinalizedMeetingStartTimestamp finalized marker: start timestamp of the live meeting last finalized (see extension/background-script/meetings.js)
  * @property {Meeting[] | undefined} meetings
  * @property {LlmProviderConfig[] | undefined} obsidianLlmProviders saved LLM connectors (see extension/obsidian/providers.js) — local, not sync, since apiKey is a secret
  * @property {ObsidianLlmActiveModel | undefined} obsidianLlmActiveModel which provider+model is currently selected to summarize with

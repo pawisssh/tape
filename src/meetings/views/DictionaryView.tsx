@@ -11,7 +11,7 @@ import { KeyboardArrowRightIcon, PlusIcon, DeleteIcon, MoreHorizIcon, LibraryAdd
 // Framework-free logic module, imported directly rather than duplicated into src/ — see
 // PLAN.md §6 Phase 5 "Structural rule to preserve". getCategories/saveCategory/
 // deleteCategory/getWords/saveWord/deleteWord are the single source of truth, also used
-// by pickupLastMeetingFromStorage() (meetings.js) to correct transcripts.
+// when a live meeting is finalized (meetings.js) to correct transcripts.
 import {
     getCategories,
     saveCategory,

@@ -8,8 +8,8 @@ interface LiveCaptureState {
 
 // `chrome.storage.local.meetingTabId` is already the extension's single source of truth
 // for "is a meeting being captured right now" — set to a tab id on new_meeting_started,
-// "processing" while processLastMeeting() runs, and cleared to null once done (see
-// extension/background-script/utils.js's clearTabIdAndApplyUpdate()). No new message
+// "processing" while the live meeting is finalized, and cleared to null once done (see
+// extension/background-script/meetings.js, the Meeting lifecycle module). No new message
 // type needed: this just reads/subscribes to that existing key, the same way
 // src/side-panel/App.tsx already does for its own live-transcript view.
 export function useLiveCaptureState(): LiveCaptureState {

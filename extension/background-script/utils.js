@@ -37,7 +37,7 @@ export function getTranscriptString(transcript) {
  * tab (see extension/content-scripts/live-panel.js) into the same plain
  * text shape as Meeting.userNotes, one timestamp header + text per note, so the result can
  * be dropped straight into a fresh meeting's userNotes with no further transformation (see
- * pickupLastMeetingFromStorage() in meetings.js). Pure — never mutates `liveCommentNotes`.
+ * buildMeeting() in meetings.js). Pure — never mutates `liveCommentNotes`.
  * @param {CommentNoteEntry[] | undefined} liveCommentNotes
  */
 export function formatCommentNotesAsUserNotes(liveCommentNotes) {
@@ -70,7 +70,7 @@ function escapeRegExp(text) {
 /**
  * Runs a user's Dictionary (extension/obsidian/dictionary.js) over a transcript, fixing
  * commonly mis-transcribed words/names/jargon before the meeting is finalized (see
- * pickupLastMeetingFromStorage() in meetings.js, the single choke point where this is
+ * buildMeeting() in meetings.js, the single choke point where this is
  * called so storage/webhook/download/LLM/Obsidian markdown all see the corrected text).
  * Pure — returns a new array, never mutates `transcript` or its blocks. Entries with no
  * (or blank) `replacement` are skipped entirely, since they're reference-only. Matching is
@@ -117,22 +117,20 @@ export function getChatMessagesString(chatMessages) {
     return chatMessagesString
 }
 
-export function clearTabIdAndApplyUpdate() {
-    // Nullify to indicate end of meeting processing
-    chrome.storage.local.set({ meetingTabId: null }, function () {
-        console.log("Meeting tab id cleared for next meeting")
+/**
+ * Applies an extension update deferred by onUpdateAvailable, once no live meeting is being
+ * captured or finalized (the Meeting lifecycle module clears meetingTabId when it's done).
+ */
+export function applyDeferredUpdateIfIdle() {
+    chrome.storage.local.get(["meetingTabId", "isDeferredUpdatedAvailable"], function (resultLocalUntyped) {
+        const resultLocal = /** @type {ResultLocal} */ (resultLocalUntyped)
 
-        // Check if there's a deferred update
-        chrome.storage.local.get(["isDeferredUpdatedAvailable"], function (resultLocalUntyped) {
-            const resultLocal = /** @type {ResultLocal} */ (resultLocalUntyped)
-
-            if (resultLocal.isDeferredUpdatedAvailable) {
-                console.log("Applying deferred update")
-                chrome.storage.local.set({ isDeferredUpdatedAvailable: false }, function () {
-                    chrome.runtime.reload()
-                })
-            }
-        })
+        if (resultLocal.isDeferredUpdatedAvailable && !resultLocal.meetingTabId) {
+            console.log("Applying deferred update")
+            chrome.storage.local.set({ isDeferredUpdatedAvailable: false }, function () {
+                chrome.runtime.reload()
+            })
+        }
     })
 }
 

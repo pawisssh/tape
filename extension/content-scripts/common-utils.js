@@ -220,6 +220,9 @@ function recoverLastMeeting() {
         /** @type {ExtensionMessage} */
         const message = {
             type: "recover_last_meeting",
+            // About to start a new live meeting in this tab, so whatever is live gets
+            // finalized first — including this tab's own, after a reload.
+            recoveryContext: "meeting-join",
         }
         chrome.runtime.sendMessage(message, function (responseUntyped) {
             const response = /** @type {ExtensionResponse} */ (responseUntyped)

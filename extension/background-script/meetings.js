@@ -1,292 +1,227 @@
-import { downloadTranscript, postTranscriptToWebhook } from './exporters.js'
-import { getObsidianSettings, updateMeetingById, getMeetingId } from '../obsidian/store.js'
 import { getWords } from '../obsidian/dictionary.js'
 import { applyDictionaryReplacements, formatCommentNotesAsUserNotes } from './utils.js'
 
-// Two independent listeners in index.js can both observe the same meeting ending — the
-// "meeting_ended" message (sent when the user clicks the platform's own end-call button)
-// and chrome.tabs.onRemoved (fired when the meeting tab actually closes, a very plausible
-// near-immediate follow-on to that click). Both used to do their own check-then-act on the
-// meetingTabId storage key before calling processLastMeeting() — separate async
-// chrome.storage round-trips with no atomicity, so both could read the pre-"processing"
-// value and both call processLastMeeting() concurrently, double-pushing the same meeting
-// into the meetings array (pickupLastMeetingFromStorage() below reads the same live
-// transcript/chatMessages keys either caller could still see) and double-triggering
-// downloads/webhook posts/the Obsidian handoff. See PLAN.md §7.1.
-//
-// The fix is a synchronous in-memory guard, not a storage-based lock: Chrome delivers
-// extension events one at a time to a single JS execution context per service-worker
-// instance — there's no true parallelism, only interleaved async callbacks — so a
-// module-level flag, set as the very first synchronous action before either listener
-// touches chrome.storage, is sufficient to fully close this race. No timeout/TTL needed,
-// unlike extension/obsidian/store.js's clipboard lock (which guards overlapping *user
-// actions* across separate page loads, a genuinely different problem).
-let finalizationInFlight = false
+// The Meeting lifecycle module: the one owner of the meeting tab (`meetingTabId`) and of
+// finalizing a live meeting into a saved Meeting, exactly once (see GLOSSARY.md). Everything
+// that happens after finalization — download, webhook, Obsidian handoff — is the injected
+// after-finalize effect, not part of this module.
+
+// Records which live meeting was last finalized (by its start timestamp), so recovery never
+// finalizes the same live meeting twice — even after the user deletes or imports Meetings,
+// which used to make "is it the last entry in `meetings`?" answer wrong.
+const FINALIZED_MARKER_KEY = "lastFinalizedMeetingStartTimestamp"
+
+const LIVE_MEETING_KEYS = [
+    "meetingSoftware",
+    "meetingTitle",
+    "meetingStartTimestamp",
+    "transcript",
+    "chatMessages",
+    "liveCommentNotes",
+]
 
 /**
- * Runs `runProcessLastMeeting` (production callers pass processLastMeeting itself) at most
- * once per meeting-end event, even though two independent listeners can both try. Takes
- * the function to run as a parameter, rather than importing processLastMeeting directly,
- * so this guard stays unit-testable without needing to import all of index.js (which
- * registers chrome.runtime.onMessage/chrome.tabs.onRemoved/chrome.alarms/chrome.permissions
- * listeners at module load time). Never rejects — callers branch on the returned shape
- * instead of try/catch, matching this codebase's "resolve to a distinct shape rather than
- * throw" style (see extension/obsidian/llm.js).
- * @param {() => Promise<any>} runProcessLastMeeting
- * @returns {Promise<{ranMeetingFinalization: false} | {ranMeetingFinalization: true, result: any} | {ranMeetingFinalization: true, error: any}>}
+ * @param {string[]} keys
+ * @returns {Promise<ResultLocal>}
  */
-export function finalizeMeetingOnce(runProcessLastMeeting) {
-    if (finalizationInFlight) {
-        // Another listener already claimed this meeting-end event — a safe no-op, not an
-        // error, so the loser can still respond to its own caller (e.g. sendResponse for
-        // the "meeting_ended" message) without duplicating the actual finalization work.
-        return Promise.resolve(/** @type {{ranMeetingFinalization: false}} */ ({ ranMeetingFinalization: false }))
+function getLocal(keys) {
+    return new Promise((resolve) => {
+        chrome.storage.local.get(keys, (result) => resolve(/** @type {ResultLocal} */ (result)))
+    })
+}
+
+/**
+ * @param {Partial<ResultLocal>} items
+ * @returns {Promise<void>}
+ */
+function setLocal(items) {
+    return new Promise((resolve) => {
+        chrome.storage.local.set(items, () => resolve())
+    })
+}
+
+/**
+ * @param {SkipReason} reason
+ * @returns {LifecycleResult}
+ */
+function skipped(reason) {
+    return { outcome: "skipped", reason }
+}
+
+/**
+ * @param {ResultLocal} live
+ */
+function isFinalized(live) {
+    const marker = live[FINALIZED_MARKER_KEY]
+    if (marker !== undefined) {
+        return marker === live.meetingStartTimestamp
     }
-    finalizationInFlight = true
-    return runProcessLastMeeting()
-        .then((result) => /** @type {{ranMeetingFinalization: true, result: any}} */ ({ ranMeetingFinalization: true, result }))
-        .catch((error) => /** @type {{ranMeetingFinalization: true, error: any}} */ ({ ranMeetingFinalization: true, error }))
-        .finally(() => {
-            finalizationInFlight = false
-        })
-}
-
-// Download transcripts, post webhook if URL is enabled and available
-// Fails if transcript is empty or webhook request fails or if no meetings in storage
-/** @throws error codes: 009, 010, 011, 012, 013, 014 */
-export function processLastMeeting() {
-    return new Promise((resolve, reject) => {
-        pickupLastMeetingFromStorage()
-            .then(() => {
-                chrome.storage.local.get(["meetings"], function (resultLocalUntyped) {
-                    const resultLocal = /** @type {ResultLocal} */ (resultLocalUntyped)
-                    chrome.storage.sync.get(["webhookUrl", "autoPostWebhookAfterMeeting", "autoDownloadFileAfterMeeting"], function (resultSyncUntyped) {
-                        const resultSync = /** @type {ResultSync} */ (resultSyncUntyped)
-
-                        // Create an array of promises to execute in parallel
-                        /** @type {Promise<any>[]} */
-                        const promises = []
-
-                        // Meeting index to download and post webhook
-                        // @ts-ignore - Because this line exists in the resolved promise from pickupLastMeetingFromStorage, which clearly means that at least one meeting exists and resultLocal.meetings cannot be undefined.
-                        const lastIndex = resultLocal.meetings.length - 1
-
-                        // Promise to download transcript
-                        if (resultSync.autoDownloadFileAfterMeeting) {
-                            promises.push(
-                                downloadTranscript(lastIndex)
-                            )
-                        }
-
-                        // Promise to post webhook if enabled
-                        if (resultSync.autoPostWebhookAfterMeeting && resultSync.webhookUrl) {
-                            promises.push(postTranscriptToWebhook(lastIndex))
-                        }
-
-                        // Execute all promises in parallel
-                        Promise.all(promises)
-                            .then(() => {
-                                resolve("Meeting processing and download/webhook posting complete")
-
-                                // Fire-and-forget: hand off to Obsidian if auto-save is configured.
-                                // Must never block or fail the download/webhook exporters above —
-                                // this promise's resolve() has already been called by this point,
-                                // and any error here is only logged, never propagated to the caller.
-                                // @ts-ignore - Because this line exists in the resolved promise from pickupLastMeetingFromStorage, which clearly means that at least one meeting exists and resultLocal.meetings cannot be undefined.
-                                const lastMeeting = resultLocal.meetings[lastIndex]
-                                triggerObsidianHandoffIfConfigured(lastMeeting).catch((error) => {
-                                    console.error("Obsidian handoff trigger failed (non-fatal):", error)
-                                })
-                            })
-                            .catch(error => {
-                                // Fails with error codes: 009, 010, 011, 012
-                                const parsedError = /** @type {ErrorObject} */ (error)
-                                console.error("Operation failed:", parsedError.errorMessage)
-                                reject({ errorCode: parsedError.errorCode, errorMessage: parsedError.errorMessage })
-                            })
-                    })
-                })
-            })
-            .catch((error) => {
-                // Fails with error codes: 013, 014
-                const parsedError = /** @type {ErrorObject} */ (error)
-                reject({ errorCode: parsedError.errorCode, errorMessage: parsedError.errorMessage })
-            })
-    })
+    // Installs from before the marker existed: fall back to searching every saved Meeting.
+    return (live.meetings || []).some((meeting) => meeting.meetingStartTimestamp === live.meetingStartTimestamp)
 }
 
 /**
- * @throws error codes: 013, 014
+ * Builds the saved Meeting from the live meeting's storage keys. Runs the user's Dictionary
+ * over the transcript first — the single choke point every downstream consumer (storage,
+ * webhook/download, LLM prompt, Obsidian markdown) reads from afterward.
+ * @param {ResultLocal} live
+ * @returns {Promise<Meeting>}
  */
-// Process transcript and chat messages of the meeting that just ended from storage, format them into strings, and save as a new entry in meetings
-export function pickupLastMeetingFromStorage() {
-    return new Promise((resolve, reject) => {
-        chrome.storage.local.get([
-            "meetingSoftware",
-            "meetingTitle",
-            "meetingStartTimestamp",
-            "transcript",
-            "chatMessages",
-            "liveCommentNotes",
-        ], function (resultUntyped) {
-            const result = /** @type {ResultLocal} */ (resultUntyped)
+async function buildMeeting(live) {
+    const words = await getWords()
 
-            if (result.meetingStartTimestamp) {
-                if ((result.transcript.length > 0) || (result.chatMessages.length > 0) || (result.liveCommentNotes?.length > 0)) {
-                    // Run the user's Dictionary (extension/obsidian/dictionary.js) over the
-                    // transcript before it's finalized — this is the single choke point every
-                    // downstream consumer (storage, webhook/download, LLM prompt, Obsidian
-                    // markdown) reads from afterward, so it only needs to happen once here.
-                    getWords().then((words) => {
-                        const transcript = applyDictionaryReplacements(result.transcript, words)
-                        const userNotes = formatCommentNotesAsUserNotes(result.liveCommentNotes)
+    /** @type {Meeting} */
+    const meeting = {
+        meetingSoftware: live.meetingSoftware ? live.meetingSoftware : "",
+        meetingTitle: live.meetingTitle,
+        meetingStartTimestamp: live.meetingStartTimestamp,
+        meetingEndTimestamp: new Date().toISOString(),
+        transcript: applyDictionaryReplacements(live.transcript || [], words),
+        chatMessages: live.chatMessages || [],
+        webhookPostStatus: "new"
+    }
 
-                        // Create new transcript entry
-                        /** @type {Meeting} */
-                        const newMeetingEntry = {
-                            meetingSoftware: result.meetingSoftware ? result.meetingSoftware : "",
-                            meetingTitle: result.meetingTitle,
-                            meetingStartTimestamp: result.meetingStartTimestamp,
-                            meetingEndTimestamp: new Date().toISOString(),
-                            transcript: transcript,
-                            chatMessages: result.chatMessages,
-                            webhookPostStatus: "new"
-                        }
-
-                        // Quick notes typed live via the floating widget become the meeting's
-                        // starting userNotes — the user can keep editing/appending them
-                        // post-meeting via the existing Notes tab autosave flow.
-                        if (userNotes) {
-                            newMeetingEntry.userNotes = userNotes
-                        }
-
-                        // Get existing recent meetings and add the new meeting
-                        chrome.storage.local.get(["meetings"], function (resultLocalUntyped) {
-                            const resultLocal = /** @type {ResultLocal} */ (resultLocalUntyped)
-                            let meetings = resultLocal.meetings || []
-                            meetings.push(newMeetingEntry)
-
-                            // Save updated meetings — kept unbounded (see manifest's
-                            // "unlimitedStorage" permission, which exempts chrome.storage.local
-                            // from its default 5MB quota so this never needs trimming).
-                            chrome.storage.local.set({ meetings: meetings }, function () {
-                                console.log("Last meeting picked up")
-                                resolve("Last meeting picked up")
-                            })
-                        })
-                    })
-                }
-                else {
-                    reject({ errorCode: "014", errorMessage: "Empty transcript, chat messages, and notes" })
-                }
-            }
-            else {
-                reject({ errorCode: "013", errorMessage: "No meetings found. May be attend one?" })
-            }
-        })
-    })
-}
-
-
-/** @throws error codes: 009, 010, 011, 012, 013, 014 */
-export function recoverLastMeeting() {
-    return new Promise((resolve, reject) => {
-        chrome.storage.local.get(["meetings", "meetingStartTimestamp", "meetingTabId"], function (resultLocalUntyped) {
-            const resultLocal = /** @type {ResultLocal} */ (resultLocalUntyped)
-
-            function checkIfRecoveryNeeded() {
-                // Check if user ever attended a meeting
-                if (resultLocal.meetingStartTimestamp) {
-                    /** @type {Meeting | undefined} */
-                    let lastSavedMeeting
-                    if ((resultLocal.meetings) && (resultLocal.meetings.length > 0)) {
-                        lastSavedMeeting = resultLocal.meetings[resultLocal.meetings.length - 1]
-                    }
-
-                    // Last meeting was not processed for some reason. Need to recover that data, process and download it.
-                    if ((!lastSavedMeeting) || (resultLocal.meetingStartTimestamp !== lastSavedMeeting.meetingStartTimestamp)) {
-                        processLastMeeting().then(() => {
-                            resolve("Recovered last meeting to the best possible extent")
-                        }).catch((error) => {
-                            // Fails with error codes: 009, 010, 011, 013, 014
-                            const parsedError = /** @type {ErrorObject} */ (error)
-                            reject({ errorCode: parsedError.errorCode, errorMessage: parsedError.errorMessage })
-                        })
-                    }
-                    else {
-                        resolve("No recovery needed")
-                    }
-                }
-                else {
-                    reject({ errorCode: "013", errorMessage: "No meetings found. May be attend one?" })
-                }
-            }
-
-            // Guard against force-ending a meeting that's still genuinely being captured.
-            // This function is called both on browser startup (crash recovery — any stored
-            // meetingTabId is guaranteed stale there, since tabs get new ids after a full
-            // restart) and every time the Meetings page mounts (MeetingsView.tsx) — the
-            // latter previously had no way to tell "capture is still live" from "capture
-            // wasn't properly finalized", and would force-finalize (i.e. end) an actively
-            // recording meeting just from being opened. meetingTabId is the extension's
-            // single source of truth for "is a meeting being captured right now" (see
-            // src/meetings/use-live-capture-state.ts) — checking it here, including
-            // verifying the tab is actually still open, fixes that without touching the
-            // crash-recovery path (a stale id there always fails the tabs.get check below).
-            if (resultLocal.meetingTabId === "processing") {
-                resolve("No recovery needed — a meeting is already being processed")
-            }
-            else if (typeof resultLocal.meetingTabId === "number") {
-                chrome.tabs.get(resultLocal.meetingTabId, () => {
-                    if (chrome.runtime.lastError) {
-                        // Tab no longer exists — stale id, safe to run the normal recovery check.
-                        checkIfRecoveryNeeded()
-                    }
-                    else {
-                        resolve("No recovery needed — a meeting is actively being captured")
-                    }
-                })
-            }
-            else {
-                checkIfRecoveryNeeded()
-            }
-        })
-    })
+    // Quick notes typed live via the floating widget become the meeting's starting
+    // userNotes — the user can keep editing/appending them post-meeting via the Notes tab.
+    const userNotes = formatCommentNotesAsUserNotes(live.liveCommentNotes)
+    if (userNotes) {
+        meeting.userNotes = userNotes
+    }
+    return meeting
 }
 
 /**
- * Opens the Obsidian handoff page (extension/obsidian/handoff.html) for a meeting that
- * just ended, if `autoSaveToObsidianAfterMeeting` is on. Fire-and-forget from the
- * caller's perspective — this must never be awaited in a way that blocks or fails the
- * existing download/webhook exporters, since the handoff page may perform a slow local
- * LLM call (Phase 4) and Obsidian may not even be installed.
- *
- * This is now the ONLY way a handoff tab gets opened — a manual "Save to Obsidian" click
- * on the Meetings page runs the same underlying flow in place instead (see
- * extension/obsidian/save-flow.js, called directly from src/meetings/agenda/
- * MeetingDetail.tsx), since a Meetings page tab is already open and focused at that
- * point and doesn't need a disposable tab of its own.
- * @param {Meeting} meeting
- * @returns {Promise<{ opened: boolean }>}
+ * @param {unknown} error
+ * @returns {ErrorObject}
  */
-export function triggerObsidianHandoffIfConfigured(meeting) {
-    return getObsidianSettings().then((settings) => {
-        if (!settings.autoSaveToObsidianAfterMeeting) {
-            return { opened: false }
+function toErrorObject(error) {
+    const maybe = /** @type {Partial<ErrorObject>} */ (error)
+    if (maybe && typeof maybe.errorCode === "string") {
+        return { errorCode: maybe.errorCode, errorMessage: maybe.errorMessage || "" }
+    }
+    return { errorCode: "023", errorMessage: `Meeting finalization failed: ${String(error)}` }
+}
+
+/**
+ * Creates the Meeting lifecycle module. Create one per service-worker instance.
+ * @param {{ afterFinalize: (meeting: Meeting) => Promise<unknown> }} effects
+ */
+export function createMeetingLifecycle({ afterFinalize }) {
+    // Chrome delivers extension events one at a time to a single service-worker context, so
+    // a synchronous in-memory flag fully closes the race between the two end triggers
+    // ("meeting_ended" and the meeting tab closing) — no storage lock needed.
+    let finalizing = false
+    // A new live meeting can start while the previous one is still finalizing (the
+    // after-finalize effect may take seconds, and content scripts only wait 2s for
+    // recovery). Its tab id must survive finalization clearing the meeting tab.
+    /** @type {number | null} */
+    let startedDuringFinalize = null
+
+    /** @returns {Promise<LifecycleResult>} */
+    async function finalize() {
+        if (finalizing) return skipped("finalizing")
+        finalizing = true
+        try {
+            const live = await getLocal([...LIVE_MEETING_KEYS, "meetings", FINALIZED_MARKER_KEY])
+            if (!live.meetingStartTimestamp) {
+                return skipped("nothing-live")
+            }
+            if (isFinalized(live)) {
+                await setLocal({ [FINALIZED_MARKER_KEY]: live.meetingStartTimestamp })
+                return skipped("already-finalized")
+            }
+            const hasContent = (live.transcript?.length > 0) || (live.chatMessages?.length > 0) || (live.liveCommentNotes?.length > 0)
+            if (!hasContent) {
+                // Nothing to save, but still finalized: recovery must not keep retrying it.
+                await setLocal({ [FINALIZED_MARKER_KEY]: live.meetingStartTimestamp })
+                return skipped("empty")
+            }
+
+            // Holds back deferred extension updates until the after-finalize effect settles.
+            if (startedDuringFinalize === null) {
+                await setLocal({ meetingTabId: "processing" })
+            }
+            const meeting = await buildMeeting(live)
+
+            // Re-read right before writing: the Meetings page may have changed the list
+            // while the Dictionary was being read.
+            const { meetings = [] } = await getLocal(["meetings"])
+            meetings.push(meeting)
+            // Saved and marked in one write, so a crash can't leave one without the other.
+            await setLocal({ meetings, [FINALIZED_MARKER_KEY]: meeting.meetingStartTimestamp })
+
+            try {
+                await afterFinalize(meeting)
+                return { outcome: "finalized", meeting }
+            } catch (afterFinalizeError) {
+                return { outcome: "finalized", meeting, afterFinalizeError: toErrorObject(afterFinalizeError) }
+            }
+        } catch (error) {
+            return { outcome: "failed", error: toErrorObject(error) }
+        } finally {
+            await setLocal({ meetingTabId: startedDuringFinalize })
+            startedDuringFinalize = null
+            finalizing = false
         }
+    }
 
-        const meetingId = getMeetingId(meeting)
-        return updateMeetingById(meetingId, () => ({ obsidianSaveStatus: "pending" }))
-            .then(() => {
-                // Phase 5 note: the built dist/ output mirrors extension/obsidian/handoff.html's
-                // own repo-relative source path (Vite mirrors the input file's path, not an
-                // arbitrary Rollup input key — see vite.config.ts) — so this getURL() path carries
-                // the "extension/" prefix to match, unlike pre-Phase-5 where the unpacked root was
-                // extension/ itself and no prefix was needed.
-                chrome.tabs.create({
-                    url: chrome.runtime.getURL(`extension/obsidian/handoff.html?meetingId=${encodeURIComponent(meetingId)}`)
-                })
-                return { opened: true }
-            })
+    return {
+        /**
+         * A live meeting started capturing in this tab; it becomes the meeting tab.
+         * @param {number} tabId
+         */
+        meetingStarted(tabId) {
+            if (finalizing) startedDuringFinalize = tabId
+            return setLocal({ meetingTabId: tabId })
+        },
+
+        /**
+         * The live meeting ended: the user clicked the platform's end-call button ("message"),
+         * or a tab closed ("tab-closed", which only counts if it is the meeting tab).
+         * @param {{ via: "message" } | { via: "tab-closed", tabId: number }} trigger
+         * @returns {Promise<LifecycleResult>}
+         */
+        async meetingEnded(trigger) {
+            if (trigger.via === "tab-closed") {
+                const { meetingTabId } = await getLocal(["meetingTabId"])
+                if (meetingTabId !== trigger.tabId) return skipped("not-meeting-tab")
+            }
+            return finalize()
+        },
+
+        /**
+         * Finalizes a live meeting whose finalization never ran or was interrupted.
+         * - "meeting-join": a content script is about to start a new live meeting and
+         *   overwrite the live keys, so whatever is live is finalized first — whether its
+         *   tab just reloaded or is another, still-open tab.
+         * - "startup": nothing survives a browser restart, so a stored meeting tab id or a
+         *   leftover "processing" both mean the live meeting was stranded.
+         * - "meetings-page": skipped while the meeting tab is still capturing or finalizing.
+         * @param {RecoveryContext} context
+         * @returns {Promise<LifecycleResult>}
+         */
+        async recover(context) {
+            if (finalizing) return skipped("finalizing")
+            if (context !== "meeting-join") {
+                const { meetingTabId } = await getLocal(["meetingTabId"])
+                if (meetingTabId === "processing" && context !== "startup") {
+                    return skipped("finalizing")
+                }
+                if (typeof meetingTabId === "number" && await isTabOpen(meetingTabId)) {
+                    return skipped("capturing")
+                }
+            }
+            return finalize()
+        },
+    }
+}
+
+/**
+ * @param {number} tabId
+ * @returns {Promise<boolean>}
+ */
+function isTabOpen(tabId) {
+    return new Promise((resolve) => {
+        chrome.tabs.get(tabId, () => resolve(!chrome.runtime.lastError))
     })
 }

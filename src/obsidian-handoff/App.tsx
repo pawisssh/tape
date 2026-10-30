@@ -10,7 +10,7 @@ import { cn } from "@/lib/utils"
 // one of two presentations of that shared flow, the other being the Meetings page's own
 // inline "Run" button (src/meetings/agenda/MeetingDetail.tsx). This page still runs for
 // the automatic post-meeting-end save, opened in its own tab (see
-// extension/background-script/meetings.js's triggerObsidianHandoffIfConfigured()) since
+// extension/background-script/after-finalize.js's triggerObsidianHandoffIfConfigured()) since
 // there's no Meetings page necessarily open at that moment.
 import { runSaveToObsidianFlow } from "../../extension/obsidian/save-flow.js"
 

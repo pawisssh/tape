@@ -1,6 +1,7 @@
 import { runLiveAssist, getLiveAssistPreview } from "./live-assist.js"
 import { ALARM_NAME } from "./config.js"
-import { processLastMeeting, recoverLastMeeting, finalizeMeetingOnce } from "./meetings.js"
+import { createMeetingLifecycle } from "./meetings.js"
+import { exportFinalizedMeeting } from "./after-finalize.js"
 import { downloadTranscript, postTranscriptToWebhook } from "./exporters.js"
 import {
     getPermissionStatus,
@@ -13,11 +14,27 @@ import {
     deregisterZoomRedirect,
 } from "./platforms.js"
 import {
-    clearTabIdAndApplyUpdate,
+    applyDeferredUpdateIfIdle,
     openExtensionPopup,
     checkAndCreateAlarm,
     openSidePanel
 } from "./utils.js"
+
+const meetingLifecycle = createMeetingLifecycle({ afterFinalize: exportFinalizedMeeting })
+
+/**
+ * Maps a lifecycle result to the {success, message} shape content scripts and the Meetings
+ * page already branch on: a recovered Meeting reports "Recovered last meeting", anything
+ * skipped reports "No recovery needed".
+ * @param {LifecycleResult} result
+ * @returns {ExtensionResponse}
+ */
+function toExtensionResponse(result) {
+    if (result.outcome === "failed") return { success: false, message: result.error }
+    if (result.outcome === "skipped") return { success: true, message: "No recovery needed" }
+    if (result.afterFinalizeError) return { success: false, message: result.afterFinalizeError }
+    return { success: true, message: "Recovered last meeting" }
+}
 
 chrome.runtime.onMessage.addListener(function (messageUnTyped, sender, sendResponse) {
     const message = /** @type {ExtensionMessage} */ (messageUnTyped)
@@ -33,48 +50,14 @@ chrome.runtime.onMessage.addListener(function (messageUnTyped, sender, sendRespo
         // Use the capture sender, including a tab in an installed web-app window.
         // Querying the active browser tab can pick a different meeting/window.
         if (typeof sender.tab?.id === "number") {
-            chrome.storage.local.set({ meetingTabId: sender.tab.id })
+            meetingLifecycle.meetingStarted(sender.tab.id)
         }
     }
 
     if (message.type === "meeting_ended") {
-        // Still set eagerly — a visible/inspectable "processing" state — but this is no
-        // longer what prevents chrome.tabs.onRemoved from double-processing the same
-        // meeting; finalizeMeetingOnce() below (see its own doc comment, meetings.js) is
-        // the actual guard, since this storage round-trip and onRemoved's own can race.
-        chrome.storage.local.set({ meetingTabId: "processing" }, function () {
-            console.log("Meeting tab id set to processing meeting")
-
-            finalizeMeetingOnce(processLastMeeting).then((outcome) => {
-                if (!outcome.ranMeetingFinalization) {
-                    // chrome.tabs.onRemoved already claimed this meeting-end event (the
-                    // tab closed moments after this message was sent) and owns calling
-                    // clearTabIdAndApplyUpdate() itself — still respond so this message's
-                    // sendResponse doesn't hang the content script's sendMessage promise.
-                    /** @type {ExtensionResponse} */
-                    const response = { success: true }
-                    sendResponse(response)
-                    return
-                }
-
-                if ("error" in outcome) {
-                    // Fails with error codes: 009, 010, 011, 012, 013, 014
-                    const parsedError = /** @type {ErrorObject} */ (outcome.error)
-
-                    /** @type {ExtensionResponse} */
-                    const response = { success: false, message: parsedError }
-                    sendResponse(response)
-                } else {
-                    /** @type {ExtensionResponse} */
-                    const response = { success: true }
-                    sendResponse(response)
-                }
-
-                // setTimeout(() => {
-                //     checkPermissionsAndOpenMeetingsPage()
-                // }, 10000)
-                clearTabIdAndApplyUpdate()
-            })
+        meetingLifecycle.meetingEnded({ via: "message" }).then((result) => {
+            sendResponse(toExtensionResponse(result))
+            applyDeferredUpdateIfIdle()
         })
     }
 
@@ -130,19 +113,10 @@ chrome.runtime.onMessage.addListener(function (messageUnTyped, sender, sendRespo
     }
 
     if (message.type === "recover_last_meeting") {
-        recoverLastMeeting().then((message) => {
-            /** @type {ExtensionResponse} */
-            const response = { success: true, message: message }
-            sendResponse(response)
+        meetingLifecycle.recover(message.recoveryContext || "meetings-page").then((result) => {
+            sendResponse(toExtensionResponse(result))
+            applyDeferredUpdateIfIdle()
         })
-            .catch((error) => {
-                // Fails with error codes: 009, 010, 011, 012, 013, 014
-                const parsedError = /** @type {ErrorObject} */ (error)
-
-                /** @type {ExtensionResponse} */
-                const response = { success: false, message: parsedError }
-                sendResponse(response)
-            })
     }
 
     if (message.type === "get_platform_enablement_status") {
@@ -288,31 +262,10 @@ chrome.runtime.onMessage.addListener(function (messageUnTyped, sender, sendRespo
     return true
 })
 
-// Download last meeting if meeting tab is closed
+// Finalize the live meeting if its meeting tab is closed
 chrome.tabs.onRemoved.addListener(function (tabId) {
-    chrome.storage.local.get(["meetingTabId"], function (resultLocalUntyped) {
-        const resultLocal = /** @type {ResultLocal} */ (resultLocalUntyped)
-
-        if (tabId === resultLocal.meetingTabId) {
-            console.log("Successfully intercepted tab close")
-
-            // Prevent misfires of onRemoved until next meeting. Also prevents available update from being applied, during meeting post processing.
-            chrome.storage.local.set({ meetingTabId: "processing" }, function () {
-                console.log("Meeting tab id set to processing meeting")
-
-                finalizeMeetingOnce(processLastMeeting).then(({ ranMeetingFinalization }) => {
-                    if (!ranMeetingFinalization) {
-                        // The "meeting_ended" message already claimed this meeting-end
-                        // event and owns calling clearTabIdAndApplyUpdate() itself.
-                        return
-                    }
-                    // setTimeout(() => {
-                    //     checkPermissionsAndOpenMeetingsPage()
-                    // }, 10000)
-                    clearTabIdAndApplyUpdate()
-                })
-            })
-        }
+    meetingLifecycle.meetingEnded({ via: "tab-closed", tabId }).then(() => {
+        applyDeferredUpdateIfIdle()
     })
 })
 
@@ -383,8 +336,8 @@ chrome.runtime.onInstalled.addListener(() => {
 // for the user to either join another meeting (which already triggers recovery, see each
 // platform's content-script init) or open the Meetings page.
 chrome.runtime.onStartup.addListener(() => {
-    recoverLastMeeting().catch((error) => {
-        console.error("Startup meeting recovery error:", error)
+    meetingLifecycle.recover("startup").then((result) => {
+        if (result.outcome === "failed") console.error("Startup meeting recovery error:", result.error)
     })
 })
 

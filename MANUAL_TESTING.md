@@ -448,3 +448,4 @@ Reload the built extension, then on Google Meet:
 5. Make the window narrow until CC moves into More options, with captions off. Click Start capture: a banner asks you to turn on captions; turning them on from More options → Captions starts capture.
 6. None of the above shows the "Tape encountered a new error" banner.
 7. With captions on, note the CC icon text in DevTools (`.google-symbols` inside the CC button) and whether its button has `aria-pressed`. Tape expects `closed_caption` or `aria-pressed="true"` while on.
+8. Join a call that needs admission (ask to join, wait in the lobby, get admitted), then turn captions on: capture starts and the captions land in the saved Meeting. Tape now looks for the captions region from the lobby on, so check it doesn't latch onto a lobby element.

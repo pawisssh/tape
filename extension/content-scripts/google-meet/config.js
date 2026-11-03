@@ -4,6 +4,7 @@ const SELECTORS_GOOGLE_MEET = {
     GOOGLE_SYMBOLS: ".google-symbols",
     TEXT_CALL_END: "call_end",
     TEXT_CAPTIONS: "closed_caption_off",
+    TEXT_CAPTIONS_ON: "closed_caption",
     TEXT_CHAT: "chat",
     TRANSCRIPT_REGION: 'div[role="region"][tabindex="0"]',
     CHAT_LIVE_REGION: 'div[aria-live="polite"].Ge9Kpc'

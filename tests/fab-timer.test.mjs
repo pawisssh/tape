@@ -40,3 +40,27 @@ test("a fresh FAB never shows an epoch-sized time for a cleared start timestamp"
     startFabTimer(fab, null)
     assert.equal(timerText.textContent, "0:00:00")
 })
+
+// Capture that starts or recovers after the meeting started used to leave the timer
+// frozen at 0:00:00, since only a meetingStartTimestamp change ever started it.
+test("the FAB timer waits while not capturing and resumes from the meeting start once capturing", () => {
+    const timerText = { textContent: "0:00:00", style: {} }
+    const fab = { querySelector: (selector) => selector === "#fab-timer-text" ? timerText : null, getBoundingClientRect: () => ({ left: 0, right: 0 }), style: {} }
+    const sandbox = {
+        console,
+        document: { querySelector: (selector) => selector === "#tape-fab" ? fab : null },
+        window: { innerWidth: 1440 },
+        setInterval: () => 1,
+        clearInterval: () => {},
+        chrome: { runtime: { onMessage: { addListener() {} } } },
+    }
+    vm.createContext(sandbox)
+    new vm.Script(source, { filename: "common-utils.js" }).runInContext(sandbox)
+
+    sandbox.setFabRecordingState(false)
+    sandbox.startFabTimer(fab, new Date(Date.now() - 65 * 1000).toISOString())
+    assert.equal(timerText.textContent, "0:00:00")
+
+    sandbox.setFabRecordingState(true)
+    assert.equal(timerText.textContent, "0:01:05")
+})

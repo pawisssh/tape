@@ -157,6 +157,8 @@
  * @property { Element | null} chatMessagesTargetNode
  * @property { MutationObserver | null} chatMessagesObserver
  * @property {boolean} isTranscriptDomErrorCaptured
+ * @property {boolean} isCapturing Meet only — whether captions are on and being captured right now, mirrored by the FAB's recording look
+ * @property {boolean} hasCaptionArrived Meet only — whether any caption has been captured this meeting
  * @property {boolean} isChatMessagesDomErrorCaptured
  * @property {boolean} hasMeetingStarted
  * @property {boolean} hasMeetingEnded

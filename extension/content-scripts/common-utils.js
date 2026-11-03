@@ -36,6 +36,8 @@ function createContentScriptState(meetingSoftware, platform) {
         chatMessagesTargetNode: null,
         chatMessagesObserver: null,
         isTranscriptDomErrorCaptured: false,
+        isCapturing: false,
+        hasCaptionArrived: false,
         isChatMessagesDomErrorCaptured: false,
         hasMeetingStarted: false,
         hasMeetingEnded: false,
@@ -440,6 +442,12 @@ let fabResizeHandler = null
 /** Handle for the FAB's live elapsed-timer interval, shared between renderFab() and unmountFab(). */
 let fabTimerIntervalId = null
 
+/** Meeting start the FAB timer counts from, kept so the timer can resume whenever capture does. */
+let fabTimerStartIso = null
+
+/** Whether the FAB shows its recording look. The timer only runs while it does. */
+let fabIsRecording = true
+
 /**
  * @description Formats elapsed seconds since `startIso` as zero-padded H:MM:SS (e.g. "0:00:23", "1:04:12").
  * @param {string} startIso
@@ -461,6 +469,9 @@ function startFabTimer(fab, startIso) {
     // Every meeting tab's content script resets the shared meetingStartTimestamp to null
     // on load. new Date(null) is the Unix epoch, so ignore it and keep the current timer.
     if (!startIso || Number.isNaN(new Date(startIso).getTime())) return
+    fabTimerStartIso = startIso
+    // Not recording shows a frozen 0:00:00. setFabRecordingState(true) starts the timer.
+    if (!fabIsRecording) return
     if (fabTimerIntervalId) clearInterval(fabTimerIntervalId)
     const timerText = fab.querySelector("#fab-timer-text")
     const tick = () => {
@@ -480,10 +491,12 @@ function startFabTimer(fab, startIso) {
 /**
  * @description Toggles the FAB between its recording and not-recording looks (brand
  * segment color/mark, timer icon, timer text opacity). When switching to not-recording,
- * freezes/stops the live timer at 0:00:00 per the Figma "not record" state.
+ * freezes/stops the live timer at 0:00:00 per the Figma "not record" state; switching
+ * back resumes it, counting from the meeting start.
  * @param {boolean} isRecording
  */
 function setFabRecordingState(isRecording) {
+    fabIsRecording = isRecording
     const fab = /** @type {HTMLElement | null} */ (document.querySelector("#tape-fab"))
     if (!fab) return
 
@@ -504,6 +517,9 @@ function setFabRecordingState(isRecording) {
         }
         if (timerText) timerText.textContent = "0:00:00"
     }
+    else if (!fabTimerIntervalId && fabTimerStartIso) {
+        startFabTimer(fab, fabTimerStartIso)
+    }
 
     const timerSegment = /** @type {HTMLElement} */ (fab.querySelector("#fab-timer-segment"))
     if (timerSegment) {
@@ -516,7 +532,7 @@ function setFabRecordingState(isRecording) {
         else {
             timerSegment.setAttribute("role", "button")
             timerSegment.setAttribute("tabindex", "0")
-            timerSegment.setAttribute("aria-label", "Retry starting capture")
+            timerSegment.setAttribute("aria-label", "Start capture")
             timerSegment.style.cursor = "pointer"
         }
     }
@@ -534,8 +550,10 @@ let fabHasJoined = false
  * joined the meeting (state.hasMeetingStarted = true). Idempotent — a second call is
  * a no-op, mirroring markCaptureFailed()/markCaptureRecovered()'s guard pattern.
  * @param {boolean} hasJoined
+ * @param {boolean} [isRecording] the capture look to land on; Meet passes false and
+ * flips it once captions are actually captured
  */
-function setFabJoinedState(hasJoined) {
+function setFabJoinedState(hasJoined, isRecording = true) {
     if (!hasJoined || fabHasJoined) return
     fabHasJoined = true
 
@@ -588,10 +606,9 @@ function setFabJoinedState(hasJoined) {
     const brandSegment = /** @type {HTMLElement} */ (fab.querySelector("#fab-brand-segment"))
     if (brandSegment) brandSegment.style.borderRightColor = "transparent"
 
-    // Capture hasn't had a chance to fail yet — the FAB's first post-join look is
-    // always "recording"; markCaptureFailed() can still flip it to the not-recording
-    // look later exactly as before this state existed.
-    setFabRecordingState(true)
+    // Teams/Zoom: capture hasn't had a chance to fail yet, so the first post-join look
+    // is "recording"; markCaptureFailed() can still flip it to not-recording later.
+    setFabRecordingState(isRecording)
 }
 
 /**
@@ -640,7 +657,7 @@ const FAB_ASSIST_SEGMENT_WIDTH_PX = 48
 
 /**
  * @param {() => void} [onRetryCapture] Called when the user clicks/activates the
- * timer segment to manually retry starting capture (only meaningful while the FAB
+ * timer segment to start capture (only meaningful while the FAB
  * is in its not-recording look — role/tabindex are only exposed then).
  */
 function renderFab(onRetryCapture) {
@@ -954,6 +971,8 @@ function unmountFab() {
         clearInterval(fabTimerIntervalId)
         fabTimerIntervalId = null
     }
+    fabTimerStartIso = null
+    fabIsRecording = true
     // Teams re-injects into the same page (module scope persists) for back-to-back
     // meetings in one tab, without a full reload — reset the one-way join-transition
     // guard so the next meeting's FAB starts pre-join again instead of skipping

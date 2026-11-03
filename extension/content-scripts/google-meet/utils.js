@@ -112,3 +112,30 @@ function pushUniqueChatBlock(state, chatBlock) {
         overWriteChromeStorage(state, ["chatMessages"], false)
     }
 }
+/**
+ * @description Reads whether Meet's captions (CC) toggle is on. Prefers the toggle
+ * button's aria-pressed, falling back to its icon ligature (closed_caption_off while off).
+ * "unknown" when the toggle isn't in the toolbar, e.g. folded into More options in a
+ * narrow window.
+ * @returns {"on" | "off" | "unknown"}
+ */
+function readCaptionsToggleGoogleMeet() {
+    const icon = Array.from(document.querySelectorAll(SELECTORS_GOOGLE_MEET.GOOGLE_SYMBOLS))
+        .find(element => element.textContent === SELECTORS_GOOGLE_MEET.TEXT_CAPTIONS || element.textContent === SELECTORS_GOOGLE_MEET.TEXT_CAPTIONS_ON)
+    if (!icon) return "unknown"
+    const pressed = icon.closest("button")?.getAttribute("aria-pressed")
+    if (pressed === "true") return "on"
+    if (pressed === "false") return "off"
+    return icon.textContent === SELECTORS_GOOGLE_MEET.TEXT_CAPTIONS ? "off" : "on"
+}
+
+/**
+ * @description Whether Tape is capturing Meet captions right now: the transcript observer
+ * is attached to a live captions region and captions are on. When the CC toggle can't be
+ * read, a caption having arrived through the observer stands in for "captions on".
+ * @param {{ captionsToggle: "on" | "off" | "unknown", isObserverAttached: boolean, hasCaptionArrived: boolean }} signals
+ */
+function isCapturingGoogleMeet({ captionsToggle, isObserverAttached, hasCaptionArrived }) {
+    if (!isObserverAttached || captionsToggle === "off") return false
+    return captionsToggle === "on" || hasCaptionArrived
+}

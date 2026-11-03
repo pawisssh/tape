@@ -27,3 +27,7 @@ _Avoid_: Last meeting check
 **Recovery**:
 Finalizing a live meeting whose finalization never ran or was interrupted: after a browser crash, or when its tab reloads or another meeting is joined before it ended.
 _Avoid_: Restore, resume
+
+**Capture**:
+Turning a live meeting's captions into its transcript. The meeting tab is either capturing (captions are on and being read) or not capturing; the floating bar shows which, and its timer segment offers **Start capture** while not capturing. A live meeting can stop and resume capture any number of times and still becomes one Meeting.
+_Avoid_: Record, recording, retry

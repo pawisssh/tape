@@ -436,3 +436,16 @@ actually work correctly — verify by hand, not just by reading the code:
 9. Update an installed older version with Meet/Teams/Zoom capture already enabled. Reload the meeting page and confirm captions and the dropdown both work without toggling platform permissions. In a narrow window, verify Rewind and Recap remain available inside the dropdown when the floating widget hides their direct buttons.
 10. Check that the black timer segment ends close to the time text at 0:00:00 and after the meeting runs longer; it must still show every digit if the hour gains another digit. Before joining, the Note/Rewind/Recap buttons remain collapsed.
 11. Click the floating Note button. In the dropdown, select a transcript line, write a note, and save. Confirm the selected speaker and speech appear above the text area, the saved note clears the text area, and the finalized meeting's Notes include both the note and linked speech. Repeat with no line selected. Confirm the note still saves. A meeting with notes but no captions should still be saved.
+
+## Meet capture start
+
+Reload the built extension, then on Google Meet:
+
+1. Auto mode, join a call: Tape turns captions on and the float bar turns orange (capturing) with the timer counting from when you joined.
+2. Auto or manual mode, join with captions off and turn them on yourself a minute later with Meet's CC button: the float bar switches from the grey play look to capturing within about 2 seconds, the timer shows time since joining, and the saved Meeting has those captions.
+3. Manual mode, join: the float bar stays grey with a play icon and `0:00:00`. Click the play/timer segment ("Start capture"): captions turn on and capture starts.
+4. Turn captions off mid-call: the float bar goes back to grey/play, and Tape does not turn captions back on. Turn them on again: capture resumes, and everything ends up in one Meeting.
+5. Make the window narrow until CC moves into More options, with captions off. Click Start capture: a banner asks you to turn on captions; turning them on from More options → Captions starts capture.
+6. None of the above shows the "Tape encountered a new error" banner.
+7. With captions on, note the CC icon text in DevTools (`.google-symbols` inside the CC button) and whether its button has `aria-pressed`. Tape expects `closed_caption` or `aria-pressed="true"` while on.
+8. Join a call that needs admission (ask to join, wait in the lobby, get admitted), then turn captions on: capture starts and the captions land in the saved Meeting. Tape now looks for the captions region from the lobby on, so check it doesn't latch onto a lobby element.

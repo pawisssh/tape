@@ -34,7 +34,20 @@ export const PLATFORM_CONFIGS = {
             "content-scripts/teams/utils.js",
             "content-scripts/teams/index.js"
         ],
-        matches: ["https://teams.live.com/*", "https://teams.microsoft.com/*", "https://teams.cloud.microsoft/*"],
+        matches: [
+            "https://teams.live.com/*",
+            "https://teams.microsoft.com/*",
+            "https://teams.cloud.microsoft/*",
+            // Defender for Cloud Apps (Conditional Access App Control) serves Teams through a
+            // reverse proxy that suffixes the app host, e.g. teams.cloud.microsoft.mcas.ms.
+            // Keep in sync with TEAMS_HOSTS in manifest.config.ts.
+            "https://teams.microsoft.com.mcas.ms/*",
+            "https://teams.cloud.microsoft.mcas.ms/*",
+            "https://teams.microsoft.com.mcas-gov.us/*",
+            "https://teams.cloud.microsoft.mcas-gov.us/*",
+            "https://teams.microsoft.com.mcas-gov.ms/*",
+            "https://teams.cloud.microsoft.mcas-gov.ms/*"
+        ],
         excludeMatches: [],
         permissions: ["notifications"]
     },

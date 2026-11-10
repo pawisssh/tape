@@ -1,5 +1,20 @@
 import { defineManifest } from "@crxjs/vite-plugin"
 
+// Teams origins, including the Defender for Cloud Apps reverse-proxy hosts that suffix the
+// app host (e.g. teams.cloud.microsoft.mcas.ms). Keep in sync with the Teams `matches` in
+// extension/background-script/config.js.
+const TEAMS_HOSTS = [
+    "https://teams.live.com/*",
+    "https://teams.microsoft.com/*",
+    "https://teams.cloud.microsoft/*",
+    "https://teams.microsoft.com.mcas.ms/*",
+    "https://teams.cloud.microsoft.mcas.ms/*",
+    "https://teams.microsoft.com.mcas-gov.us/*",
+    "https://teams.cloud.microsoft.mcas-gov.us/*",
+    "https://teams.microsoft.com.mcas-gov.ms/*",
+    "https://teams.cloud.microsoft.mcas-gov.ms/*",
+]
+
 // Replaces the static extension/manifest.json (Phase 5). Preserves upstream's exact
 // permission set plus the documented additions (clipboardWrite from Phase 3,
 // optional_host_permissions already included "*://*/*" for Phase 4's LLM endpoint
@@ -58,9 +73,7 @@ export default defineManifest({
     optional_host_permissions: [
         "*://*/*",
         "https://*.zoom.us/",
-        "https://teams.live.com/*",
-        "https://teams.microsoft.com/*",
-        "https://teams.cloud.microsoft/*",
+        ...TEAMS_HOSTS,
     ],
     background: {
         service_worker: "extension/background-script/index.js",
@@ -95,9 +108,7 @@ export default defineManifest({
             ],
             matches: [
                 "https://meet.google.com/*",
-                "https://teams.live.com/*",
-                "https://teams.microsoft.com/*",
-                "https://teams.cloud.microsoft/*",
+                ...TEAMS_HOSTS,
                 "https://*.zoom.us/*",
             ],
         },

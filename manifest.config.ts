@@ -1,8 +1,8 @@
 import { defineManifest } from "@crxjs/vite-plugin"
 
 // Teams origins, including the Defender for Cloud Apps reverse-proxy hosts that suffix the
-// app host (e.g. teams.cloud.microsoft.mcas.ms). Keep in sync with the Teams `matches` in
-// extension/background-script/config.js.
+// app host (e.g. teams.cloud.microsoft.mcas.ms). tests/manifest-hosts.test.mjs checks every
+// content-script host in extension/background-script/config.js is declared here.
 const TEAMS_HOSTS = [
     "https://teams.live.com/*",
     "https://teams.microsoft.com/*",

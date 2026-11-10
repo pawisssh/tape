@@ -53,6 +53,9 @@ function autoEnableCaptionsGoogleMeet(state) {
     // When user is waiting in meeting lobby for someone to let them in, the call end icon is visible, but the captions icon is still not visible.
     // CRITICAL DOM DEPENDENCY
     waitForElement(SELECTORS_GOOGLE_MEET.GOOGLE_SYMBOLS, SELECTORS_GOOGLE_MEET.TEXT_CAPTIONS_ALL).then(() => {
+        // Shows which toggle this Meet build renders and whether its state is readable
+        const toggle = findCaptionsToggleGoogleMeet()
+        console.log(`Captions toggle found: ${toggle?.iconText}, aria-pressed=${toggle?.ariaPressed}, reads ${readCaptionsToggleGoogleMeet()}`)
         chrome.storage.sync.get(["operationMode"], function (resultSyncUntyped) {
             const resultSync = /** @type {ResultSync} */ (resultSyncUntyped)
             if (resultSync.operationMode === "manual") {

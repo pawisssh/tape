@@ -137,10 +137,22 @@ function classifyCaptionsToggleGoogleMeet(iconText, ariaPressed) {
  * @returns {"on" | "off" | "unknown"}
  */
 function readCaptionsToggleGoogleMeet() {
+    const toggle = findCaptionsToggleGoogleMeet()
+    if (!toggle) return "unknown"
+    return classifyCaptionsToggleGoogleMeet(toggle.iconText, toggle.ariaPressed)
+}
+
+/**
+ * @description The captions toggle's raw signals: its icon ligature and its button's
+ * aria-pressed. null when no captions icon is in the toolbar.
+ * @returns {{ iconText: string, ariaPressed: string | null } | null}
+ */
+function findCaptionsToggleGoogleMeet() {
+    // CRITICAL DOM DEPENDENCY
     const icon = Array.from(document.querySelectorAll(SELECTORS_GOOGLE_MEET.GOOGLE_SYMBOLS))
         .find(element => SELECTORS_GOOGLE_MEET.TEXT_CAPTIONS_ALL.includes(element.textContent ?? ""))
-    if (!icon) return "unknown"
-    return classifyCaptionsToggleGoogleMeet(icon.textContent, icon.closest("button")?.getAttribute("aria-pressed"))
+    if (!icon) return null
+    return { iconText: icon.textContent ?? "", ariaPressed: icon.closest("button")?.getAttribute("aria-pressed") ?? null }
 }
 
 let isTurningOnCaptionsGoogleMeet = false

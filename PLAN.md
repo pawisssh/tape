@@ -24,7 +24,7 @@ The UI (popup, meeting history page, Obsidian handoff page) is rebuilt with Vite
 
 ## 3. Reference material (read, do not copy code from)
 
-- Upstream: `github.com/vivek-nexus/transcriptonic`, MIT, default branch `main`, latest release v3.4.2 (2026-08-04).
+- Upstream: `github.com/vivek-nexus/transcriptonic`, MIT, default branch `main`, forked at v3.4.2 (2026-08-04). Later upstream changes and what Tape did with each: [UPSTREAM.md](UPSTREAM.md).
 - `/Users/kane/Projects/meet-to-obsidian/transcriptonic-v2` — a sibling fork of the same upstream that already solved this exact problem (Obsidian export + local LLM + shadcn/Vite UI, but on Radix, not Base UI). Its design decisions are threaded through this plan (URI encoding rules, LLM fallback discipline, CRXJS build gotchas, etc.) because they're already battle-tested. Re-derive the implementation from scratch in `tape`; do not import or copy its files.
 - A screenshot the user provided of Scribbl's real post-meeting page (title, Notes/Transcript tabs, a "writing your notes" loading state, and a per-speaker panel showing avatar/name/talk-time/percentage/timeline bar) — useful concrete reference for the history page in Phase 5, optional to emulate the speaker-timeline visual.
 

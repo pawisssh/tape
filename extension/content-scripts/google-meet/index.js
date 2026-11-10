@@ -51,23 +51,20 @@ function initGoogleMeet() {
  */
 function autoEnableCaptionsGoogleMeet(state) {
     // When user is waiting in meeting lobby for someone to let them in, the call end icon is visible, but the captions icon is still not visible.
-    waitForElement(SELECTORS_GOOGLE_MEET.GOOGLE_SYMBOLS, SELECTORS_GOOGLE_MEET.TEXT_CAPTIONS).then(() => {
+    // CRITICAL DOM DEPENDENCY
+    waitForElement(SELECTORS_GOOGLE_MEET.GOOGLE_SYMBOLS, SELECTORS_GOOGLE_MEET.TEXT_CAPTIONS_ALL).then(() => {
         chrome.storage.sync.get(["operationMode"], function (resultSyncUntyped) {
             const resultSync = /** @type {ResultSync} */ (resultSyncUntyped)
             if (resultSync.operationMode === "manual") {
                 console.log("Manual mode selected, leaving captions off")
             }
-            else if (!state.isCapturing && !state.hasCaptionArrived && !state.hasMeetingEnded) {
-                clickCaptionsToggleGoogleMeet()
+            else {
+                // Stop retrying once captions are flowing, so captions the user turns off
+                // during the retry window stay off.
+                turnOnCaptionsGoogleMeet(() => state.isCapturing || state.hasCaptionArrived || state.hasMeetingEnded)
             }
         })
     })
-}
-
-function clickCaptionsToggleGoogleMeet() {
-    // CRITICAL DOM DEPENDENCY
-    const icon = selectElements(SELECTORS_GOOGLE_MEET.GOOGLE_SYMBOLS, `^${SELECTORS_GOOGLE_MEET.TEXT_CAPTIONS}$`)[0]
-    if (icon) /** @type {HTMLElement} */ (icon).click()
 }
 
 /**
@@ -98,10 +95,10 @@ function startCaptureGoogleMeet(state) {
     const captionsToggle = readCaptionsToggleGoogleMeet()
     console.log(`Start capture pressed, captions ${captionsToggle}`)
     if (captionsToggle === "off") {
-        clickCaptionsToggleGoogleMeet()
+        turnOnCaptionsGoogleMeet(() => state.hasMeetingEnded)
     }
     else if (captionsToggle === "unknown") {
-        showNotificationGoogleMeet({ status: 200, message: "<b>Turn on captions to start capture</b><br/>Use CC in Meet's toolbar, or More options → Captions" })
+        showNotificationGoogleMeet({ status: 200, message: "<b>Turn on captions to start capture</b><br/>Press C, or use the captions button in Meet's toolbar" })
     }
 }
 

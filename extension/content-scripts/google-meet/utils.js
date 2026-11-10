@@ -113,20 +113,64 @@ function pushUniqueChatBlock(state, chatBlock) {
     }
 }
 /**
- * @description Reads whether Meet's captions (CC) toggle is on. Prefers the toggle
- * button's aria-pressed, falling back to its icon ligature (closed_caption_off while off).
- * "unknown" when the toggle isn't in the toolbar, e.g. folded into More options in a
- * narrow window.
+ * @description Classifies Meet's captions toggle from its icon ligature and its button's
+ * aria-pressed. aria-pressed wins when present. Without it, only the older
+ * closed_caption_off / closed_caption pair says which state it's in; translate_cc looks
+ * the same on and off, so it's "unknown".
+ * @param {string | null} iconText
+ * @param {string | null | undefined} ariaPressed
+ * @returns {"on" | "off" | "unknown"}
+ */
+function classifyCaptionsToggleGoogleMeet(iconText, ariaPressed) {
+    if (!iconText || !SELECTORS_GOOGLE_MEET.TEXT_CAPTIONS_ALL.includes(iconText)) return "unknown"
+    if (ariaPressed === "true") return "on"
+    if (ariaPressed === "false") return "off"
+    if (iconText === SELECTORS_GOOGLE_MEET.TEXT_CAPTIONS_OFF) return "off"
+    if (iconText === SELECTORS_GOOGLE_MEET.TEXT_CAPTIONS_ON) return "on"
+    return "unknown"
+}
+
+/**
+ * @description Reads whether Meet's captions toggle is on. "unknown" when the toggle isn't
+ * in the toolbar (e.g. folded into More options in a narrow window) or its state can't be
+ * read.
  * @returns {"on" | "off" | "unknown"}
  */
 function readCaptionsToggleGoogleMeet() {
     const icon = Array.from(document.querySelectorAll(SELECTORS_GOOGLE_MEET.GOOGLE_SYMBOLS))
-        .find(element => element.textContent === SELECTORS_GOOGLE_MEET.TEXT_CAPTIONS || element.textContent === SELECTORS_GOOGLE_MEET.TEXT_CAPTIONS_ON)
+        .find(element => SELECTORS_GOOGLE_MEET.TEXT_CAPTIONS_ALL.includes(element.textContent ?? ""))
     if (!icon) return "unknown"
-    const pressed = icon.closest("button")?.getAttribute("aria-pressed")
-    if (pressed === "true") return "on"
-    if (pressed === "false") return "off"
-    return icon.textContent === SELECTORS_GOOGLE_MEET.TEXT_CAPTIONS ? "off" : "on"
+    return classifyCaptionsToggleGoogleMeet(icon.textContent, icon.closest("button")?.getAttribute("aria-pressed"))
+}
+
+let isTurningOnCaptionsGoogleMeet = false
+
+/**
+ * @description Turns captions on with Meet's "c" shortcut. The newer translate_cc button
+ * opens a menu instead of toggling, so clicking no longer works. Meet can drop the first
+ * keypress when its shortcut handler isn't ready yet, so this re-checks the toggle and
+ * retries every 1.5s, up to 10 times. "c" toggles, so it is only sent while the toggle
+ * reads "off": never when captions are on or their state can't be read.
+ * @param {() => boolean} [shouldStop] checked before each attempt; true ends the retries
+ * @returns {Promise<void>}
+ */
+async function turnOnCaptionsGoogleMeet(shouldStop = () => false) {
+    // One loop at a time: two loops (auto mode and a Start capture press) could each send
+    // "c" before Meet updates aria-pressed, toggling captions back off.
+    if (isTurningOnCaptionsGoogleMeet) return
+    isTurningOnCaptionsGoogleMeet = true
+    try {
+        const maxAttempts = 10
+        for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+            if (shouldStop() || readCaptionsToggleGoogleMeet() !== "off") return
+            dispatchKeyboardShortcut("c", "KeyC", { bubbles: true })
+            await new Promise((resolve) => setTimeout(resolve, 1500))
+        }
+        console.error("Could not turn on captions")
+    }
+    finally {
+        isTurningOnCaptionsGoogleMeet = false
+    }
 }
 
 /**

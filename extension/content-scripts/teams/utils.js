@@ -46,29 +46,8 @@ function showNotificationTeams(extensionStatusJSON) {
 }
 
 function dispatchLiveCaptionsShortcut() {
-    let key, code, modifiers
-
     // Mac: Command+Shift+A
-    key = 'a'
-    code = 'KeyA'
-    modifiers = { metaKey: true, shiftKey: true, bubbles: true }
-
-    let event = new KeyboardEvent('keydown', {
-        key: key,
-        code: code,
-        ...modifiers
-    })
-    document.dispatchEvent(event)
-
+    dispatchKeyboardShortcut("a", "KeyA", { metaKey: true, shiftKey: true, bubbles: true })
     // Windows: Alt+Shift+C (defaulting non-Mac to Windows)
-    key = 'c'
-    code = 'KeyC'
-    modifiers = { altKey: true, shiftKey: true, bubbles: true }
-
-    event = new KeyboardEvent('keydown', {
-        key: key,
-        code: code,
-        ...modifiers
-    })
-    document.dispatchEvent(event)
+    dispatchKeyboardShortcut("c", "KeyC", { altKey: true, shiftKey: true, bubbles: true })
 }

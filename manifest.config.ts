@@ -40,7 +40,7 @@ const TEAMS_HOSTS = [
 export default defineManifest({
     manifest_version: 3,
     name: "Tape",
-    version: "3.4.2",
+    version: "3.4.5",
     description: "Simple Google Meet transcripts. Private and open source.",
     action: {
         // Toolbar button / puzzle-piece extensions-dropdown icon — deliberately a

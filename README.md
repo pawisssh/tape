@@ -3,7 +3,7 @@ Simple Google Meet transcripts. Private and open source.
 > Teams and Zoom transcripts in beta. <a href="https://github.com/vivek-nexus/transcriptonic/wiki/Zoom-and-Teams-beta-testing" target="_blank">Learn
           more</a>.
 
-Extension status: 🟢 OPERATIONAL (v3.4.2)
+Extension status: 🟢 OPERATIONAL (v3.4.5)
 
 <br />
 <br />

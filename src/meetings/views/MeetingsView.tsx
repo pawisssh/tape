@@ -189,7 +189,7 @@ export default function MeetingsView() {
 
             const newMeeting: Meeting = {
                 meetingSoftware: "",
-                meetingTitle: file.name.replace(/\.txt$/i, ""),
+                meetingTitle: file.name.replace(/\.(txt|md)$/i, ""),
                 meetingStartTimestamp: transcript[0].timestamp,
                 meetingEndTimestamp: transcript[transcript.length - 1].timestamp,
                 transcript,
@@ -232,7 +232,7 @@ export default function MeetingsView() {
                     <input
                         ref={importFileInputRef}
                         type="file"
-                        accept=".txt"
+                        accept=".txt,.md"
                         className="hidden"
                         onChange={handleImportFileChange}
                     />

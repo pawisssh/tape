@@ -18,7 +18,7 @@ Run npm install and npm run build, then open chrome://extensions, enable Develop
 ![screenshot-2](/assets/screenshot-2.png)
 Tape has two modes of operation.
 
-**In both modes, transcript will be downloaded as a text file at the end of each meeting.**
+**In both modes, transcript will be downloaded as a Markdown (`.md`) file at the end of each meeting.**
 
 - **Auto mode:** Automatically records transcripts for all meetings
 - **Manual mode:** Switch on Tape by clicking on captions icon in Google Meet (CC icon)

@@ -31,7 +31,7 @@ export function downloadTranscript(index, isWebhookEnabled) {
 
                 const prefix = meeting.meetingSoftware ? `${meeting.meetingSoftware} transcript` : "Transcript"
 
-                const fileName = `Tape/${prefix}-${sanitisedMeetingTitle} at ${formattedTimestamp} on.txt`
+                const fileName = `Tape/${prefix}-${sanitisedMeetingTitle} at ${formattedTimestamp} on.md`
 
 
                 // Format transcript and chatMessages content
@@ -41,7 +41,7 @@ export function downloadTranscript(index, isWebhookEnabled) {
                     content += getChatMessagesString(meeting.chatMessages)
                 }
 
-                const blob = new Blob([content], { type: "text/plain" })
+                const blob = new Blob([content], { type: "text/markdown" })
 
                 // Read the blob as a data URL
                 const reader = new FileReader()
@@ -49,7 +49,7 @@ export function downloadTranscript(index, isWebhookEnabled) {
                 // Read the blob
                 reader.readAsDataURL(blob)
 
-                // Download as text file, once blob is read
+                // Download as Markdown file, once blob is read
                 reader.onload = function (event) {
                     if (event.target?.result) {
                         const dataUrl = event.target.result
@@ -68,7 +68,7 @@ export function downloadTranscript(index, isWebhookEnabled) {
                             chrome.downloads.download({
                                 // @ts-ignore
                                 url: dataUrl,
-                                filename: "Tape/Transcript.txt",
+                                filename: "Tape/Transcript.md",
                                 conflictAction: "uniquify"
                             })
                             console.log("Invalid file name. Transcript downloaded to Tape directory with simple file name.")

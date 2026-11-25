@@ -96,9 +96,9 @@ unmodified from upstream behavior.
       absent (not present-but-empty).
 11. Confirm the meetings page (`meetings.html`) shows this meeting's row with an
     **"Obsidian status"** column reading **"Sent"** shortly after the handoff.
-12. Confirm the `.txt` transcript **still downloaded** as usual (Obsidian export must
+12. Confirm the `.md` transcript **still downloaded** as usual (Obsidian export must
     never replace or block the existing download fallback) — unless you had also
-    turned off "Automatically download transcript text file" elsewhere in the settings,
+    turned off "Automatically download transcript Markdown file" elsewhere in the settings,
     in which case this is expected to be skipped.
 
 ### Step C: repeat the "Always allow" check

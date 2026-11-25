@@ -3,18 +3,11 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Separator } from "@/components/ui/separator"
-import { Switch } from "@/components/ui/switch"
 import { toast } from "@/components/ui/toast"
 import { getSync, setSync } from "@/lib/chrome-storage"
-import { endpointOriginPattern, requestPermissions } from "@/lib/permissions"
 // Framework-free logic modules, imported directly — never duplicated into src/.
 import { getSaveFolder, setSaveFolder, clearSaveFolder } from "../../../extension/background-script/save-folder.js"
 import { DEFAULT_FILENAME_TEMPLATE, buildFilename, resolveFilenameTemplate } from "../../../extension/obsidian/markdown.js"
-import {
-    FOUNDATION_MODEL_BASE_URL,
-    FOUNDATION_MODEL_COMMAND,
-    requestFoundationModelTitle,
-} from "../../../extension/obsidian/file-title.js"
 
 const EXAMPLE_MEETING: Meeting = {
     meetingTitle: "Weekly meeting",
@@ -26,20 +19,15 @@ const EXAMPLE_MEETING: Meeting = {
     webhookPostStatus: "new",
 }
 
-const isMac = navigator.platform.startsWith("Mac")
-
 export default function FilesSettings() {
     const [folder, setFolder] = useState<any>()
     const [folderGranted, setFolderGranted] = useState(true)
     // null until loaded, so a save can't overwrite the stored template with the default.
     const [template, setTemplate] = useState<string | null>(null)
-    const [useFoundationModel, setUseFoundationModel] = useState(false)
-    const [testing, setTesting] = useState(false)
 
     useEffect(() => {
-        getSync<ResultSync>(["obsidianFileNameTemplate", "useFoundationModelTitles"]).then((result) => {
+        getSync<ResultSync>(["obsidianFileNameTemplate"]).then((result) => {
             setTemplate(resolveFilenameTemplate(result.obsidianFileNameTemplate))
-            setUseFoundationModel(result.useFoundationModelTitles === true)
         })
         getSaveFolder()
             .then(async (handle) => {
@@ -87,33 +75,6 @@ export default function FilesSettings() {
         const next = template.trim() || DEFAULT_FILENAME_TEMPLATE
         setTemplate(next)
         setSync({ obsidianFileNameTemplate: next })
-    }
-
-    async function testFoundationModel() {
-        setTesting(true)
-        const { title, error } = await requestFoundationModelTitle(
-            "Ann: Let's agree the launch date.\nBen: The fifth works, marketing is ready.",
-            "Meeting",
-        )
-        setTesting(false)
-        toast.add(
-            title
-                ? { title: "The on-device model works", description: `Sample title: ${title}`, type: "success" }
-                : { title: error || "No title", description: `Run "${FOUNDATION_MODEL_COMMAND}". Until it answers, files use the meeting's own title.`, type: "warning" },
-        )
-    }
-
-    async function toggleFoundationModel(checked: boolean) {
-        if (checked) {
-            const granted = await requestPermissions([endpointOriginPattern(FOUNDATION_MODEL_BASE_URL)!])
-            if (!granted) {
-                toast.add({ title: "Permission not granted", type: "warning" })
-                return
-            }
-        }
-        setUseFoundationModel(checked)
-        await setSync({ useFoundationModelTitles: checked })
-        if (checked) await testFoundationModel()
     }
 
     return (
@@ -165,36 +126,6 @@ export default function FilesSettings() {
                 token such as {'{{"a concise title"}}'} uses the AI title, or the meeting's own title when there is none.
                 Filters work too, e.g. {'{{"a concise title"|kebab}}'}.
             </p>
-
-            {isMac || useFoundationModel ? (
-                <>
-                    <Separator className="my-4" />
-                    <div className="flex items-start justify-between gap-4">
-                        <div>
-                            <p className="font-bold text-meetings-ink">Name files with Apple Foundation Model</p>
-                            <p className="mt-1 text-sm text-meetings-ink-muted">
-                                On-device titles from a short excerpt, when the meeting has no AI summary title yet. Needs
-                                macOS 27 or later with Apple Intelligence on, and this running in Terminal (agree to Apple's
-                                terms first with <code>sudo fm license</code>):
-                            </p>
-                            <code className="mt-2 block text-xs break-all text-meetings-ink">{FOUNDATION_MODEL_COMMAND}</code>
-                        </div>
-                        <Switch checked={useFoundationModel} disabled={testing} onCheckedChange={toggleFoundationModel} />
-                    </div>
-                    {useFoundationModel ? (
-                        <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            className="mt-3 rounded-none"
-                            disabled={testing}
-                            onClick={testFoundationModel}
-                        >
-                            {testing ? "Testing…" : "Test"}
-                        </Button>
-                    ) : null}
-                </>
-            ) : null}
         </div>
     )
 }

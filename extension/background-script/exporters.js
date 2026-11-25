@@ -1,7 +1,7 @@
 import { getTranscriptString, getChatMessagesString } from './utils.js'
 import { TIMEFORMAT } from './config.js'
 import { buildFilename, resolveFilenameTemplate } from '../obsidian/markdown.js'
-import { resolveFileTitle } from '../obsidian/file-title.js'
+import { cleanFileTitle } from '../obsidian/file-title.js'
 import { writeToSaveFolder } from './save-folder.js'
 
 /**
@@ -12,12 +12,9 @@ import { writeToSaveFolder } from './save-folder.js'
  * @returns {Promise<string>}
  */
 async function saveTranscriptFile(meeting, content) {
-    const [{ obsidianFileNameTemplate }, aiTitle] = await Promise.all([
-        chrome.storage.sync.get(["obsidianFileNameTemplate"]),
-        resolveFileTitle(meeting),
-    ])
+    const { obsidianFileNameTemplate } = await chrome.storage.sync.get(["obsidianFileNameTemplate"])
     const filename = buildFilename(resolveFilenameTemplate(/** @type {string | undefined} */ (obsidianFileNameTemplate)), meeting, {
-        aiTitle,
+        aiTitle: cleanFileTitle(meeting.llmSummaryTitle),
         extension: ".txt",
     })
 

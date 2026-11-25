@@ -65,8 +65,7 @@ unmodified from upstream behavior.
    `{{date}} {{time}} {{title}} {{platform}}`. Also choose a **Save location** and allow
    it on every visit, restart Chrome, then end a meeting with the Meetings page closed:
    the .txt lands in that folder (or Downloads/Tape, with **Allow access** shown in
-   Settings, if Chrome dropped the permission). On macOS 27+, start the `fm serve` command
-   shown there, turn on **Name files with Apple Foundation Model** and check the toast.
+   Settings, if Chrome dropped the permission).
 6. Click **Save**. You should see an "Obsidian settings saved!" alert.
 7. Check **"Automatically save transcript to Obsidian, after each meeting"**. If you
    see an alert asking you to save a vault name first, go back to step 6 and confirm the

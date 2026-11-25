@@ -22,7 +22,7 @@
 
 import { buildMarkdown, buildFilename } from "./markdown.js"
 import { buildObsidianUri, joinObsidianPath } from "./uri.js"
-import { resolveFileTitle } from "./file-title.js"
+import { cleanFileTitle } from "./file-title.js"
 import { enrichWithLlm } from "./llm.js"
 import { getMeetingById, updateMeetingById, getObsidianSettings, acquireClipboardLock, releaseClipboardLock } from "./store.js"
 
@@ -215,7 +215,7 @@ export async function runSaveToObsidianFlow(meetingId, { onStep, writeToClipboar
             : undefined,
     )
     const filename = buildFilename(settings.obsidianFileNameTemplate, meeting, {
-        aiTitle: await resolveFileTitle({ ...meeting, llmSummaryTitle: llmResult?.title }),
+        aiTitle: cleanFileTitle(llmResult?.title),
     })
     const filePath = joinObsidianPath(settings.obsidianFolder, filename)
     const built = buildObsidianUri({ vault: settings.obsidianVaultName, filePath, content })

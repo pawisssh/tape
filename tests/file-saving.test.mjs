@@ -1,4 +1,4 @@
-import { test, beforeEach, afterEach } from "node:test"
+import { test, beforeEach } from "node:test"
 import assert from "node:assert/strict"
 
 const meeting = {
@@ -6,8 +6,7 @@ const meeting = {
     meetingEndTimestamp: new Date(2026, 10, 25, 15, 0).toISOString(), chatMessages: [], webhookPostStatus: "new",
     transcript: [{ personName: "Ann", timestamp: new Date(2026, 10, 25, 14, 31).toISOString(), transcriptText: "สวัสดี launch" }],
 }
-let sync, local, downloads, reply
-const originalFetch = globalThis.fetch
+let sync, local, downloads
 
 function area(get) {
     return {
@@ -50,13 +49,10 @@ function fakeFolder(files, permission = "granted") {
 }
 beforeEach(() => {
     sync = {}; local = { meetings: [structuredClone(meeting)] }; downloads = []; folder = undefined
-    reply = { ok: true, json: async () => ({ choices: [{ message: { content: 'Title: "Launch plan"\n' } }] }) }
-    globalThis.fetch = async () => { if (reply instanceof Error) throw reply; return reply }
 })
-afterEach(() => { globalThis.fetch = originalFetch })
 
 const { downloadTranscript } = await import("../extension/background-script/exporters.js")
-const { cleanFileTitle, titleExcerpt } = await import("../extension/obsidian/file-title.js")
+const { cleanFileTitle } = await import("../extension/obsidian/file-title.js")
 const { resolveFilenameTemplate, DEFAULT_FILENAME_TEMPLATE } = await import("../extension/obsidian/markdown.js")
 
 test("txt uses Echo's date, time and title naming in Downloads/Tape", async () => {
@@ -64,19 +60,10 @@ test("txt uses Echo's date, time and title naming in Downloads/Tape", async () =
     assert.equal(downloads[0].filename, "Tape/2026-11-25 14-30 Team sync_ Q4.txt")
     assert.match(decodeURIComponent(downloads[0].url), /สวัสดี launch/)
 })
-test("the foundation model names the file and the title is cached", async () => {
-    sync.useFoundationModelTitles = true
+test("the AI summary title names the file, without its date", async () => {
+    local.meetings[0].llmSummaryTitle = "2026-11-25-Launch plan"
     await downloadTranscript(0)
     assert.equal(downloads[0].filename, "Tape/2026-11-25 14-30 Launch plan.txt")
-    assert.equal(local.meetings[0].fileTitle, "Launch plan")
-})
-test("a refused or unreachable model keeps the meeting's title", async () => {
-    sync.useFoundationModelTitles = true
-    for (reply of [{ ok: false, status: 403 }, new Error("down")]) {
-        downloads = []
-        await downloadTranscript(0)
-        assert.equal(downloads[0].filename, "Tape/2026-11-25 14-30 Team sync_ Q4.txt")
-    }
 })
 test("the chosen folder is written to without replacing a file", async () => {
     const files = { "2026-11-25 14-30 Team sync_ Q4.txt": "old" }
@@ -100,8 +87,7 @@ test("the autosaved old default migrates, a custom template stays", () => {
     assert.equal(resolveFilenameTemplate('{{date}}-{{"a concise, engaging title for this meeting"|kebab}}-meeting-note'), DEFAULT_FILENAME_TEMPLATE)
     assert.equal(resolveFilenameTemplate("{{title}}"), "{{title}}")
 })
-test("titles lose a leading date; excerpts stay short", () => {
+test("titles lose a leading date", () => {
     assert.equal(cleanFileTitle("2026-11-25-Budget review"), "Budget review")
     assert.equal(cleanFileTitle(" \n"), undefined)
-    assert.ok(titleExcerpt({ ...meeting, transcript: [{ ...meeting.transcript[0], transcriptText: "x".repeat(9000) }] }).length < 3010)
 })

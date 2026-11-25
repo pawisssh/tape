@@ -106,7 +106,7 @@ const WebhookSection = forwardRef<WebhookSectionHandle, WebhookSectionProps>(fun
         })
     }, [])
 
-    // The .txt download must stay an always-on fallback unless another exporter (webhook
+    // The .md download must stay an always-on fallback unless another exporter (webhook
     // or Obsidian) is active, so the user is never left with zero export paths.
     const anotherExporterActive = autoPost || obsidianAutoSaveOn
 
@@ -195,7 +195,7 @@ const WebhookSection = forwardRef<WebhookSectionHandle, WebhookSectionProps>(fun
     }
 
     function handleAutoDownloadChange(checked: boolean) {
-        if (!checked && !confirm("Text file serves as a harmless backup, you sure you don't need it?")) {
+        if (!checked && !confirm("Markdown file serves as a harmless backup, you sure you don't need it?")) {
             return
         }
         setAutoDownload(checked)
@@ -244,7 +244,7 @@ const WebhookSection = forwardRef<WebhookSectionHandle, WebhookSectionProps>(fun
                             checked={autoDownload}
                             onCheckedChange={(v) => handleAutoDownloadChange(v === true)}
                         />
-                        <Label htmlFor="auto-download-file">Automatically download transcript text file, after each meeting</Label>
+                        <Label htmlFor="auto-download-file">Automatically download transcript Markdown file, after each meeting</Label>
                     </div>
                 ) : null}
             </div>

@@ -21,7 +21,7 @@ const MAX_FILENAME_LENGTH = 200
 const FILE_EXTENSION = ".md"
 
 // Adapted from upstream's `invalidFilenameRegex` (extension/background-script/exporters.js)
-// so filename sanitization stays consistent between the .txt export path and the new
+// so filename sanitization stays consistent between the download export path and the new
 // Obsidian .md export path. Strips characters illegal in Windows/macOS/Linux filenames,
 // leading/trailing dots and whitespace-like separators (including Unicode line/paragraph/
 // space separators and the NUL char), and Windows reserved device names

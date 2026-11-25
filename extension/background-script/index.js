@@ -65,9 +65,9 @@ chrome.runtime.onMessage.addListener(function (messageUnTyped, sender, sendRespo
         if ((typeof message.index === "number") && (message.index >= 0)) {
             // Download the requested item
             downloadTranscript(message.index, false)
-                .then(() => {
+                .then((savedMessage) => {
                     /** @type {ExtensionResponse} */
-                    const response = { success: true }
+                    const response = { success: true, message: savedMessage }
                     sendResponse(response)
                 })
                 .catch((error) => {

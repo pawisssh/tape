@@ -7,7 +7,7 @@
 // file is stateful and chrome-dependent — not unit-testable the same way, but its tests
 // (tests/store.test.mjs) install a minimal in-memory fake of chrome.storage first.
 
-import { DEFAULT_FILENAME_TEMPLATE } from "./markdown.js"
+import { resolveFilenameTemplate } from "./markdown.js"
 import { DEFAULT_LLM_TIMEOUT_MS } from "./llm.js"
 import { getProviders, getActiveModel } from "./providers.js"
 import { normalizeOutputLanguage } from "./output-language.js"
@@ -129,7 +129,7 @@ export function getObsidianSettings() {
         autoSaveToObsidianAfterMeeting: !!resultSync.obsidianVaultName,
         obsidianVaultName: resultSync.obsidianVaultName || "",
         obsidianFolder: resultSync.obsidianFolder || "",
-        obsidianFileNameTemplate: resultSync.obsidianFileNameTemplate || DEFAULT_FILENAME_TEMPLATE,
+        obsidianFileNameTemplate: resolveFilenameTemplate(resultSync.obsidianFileNameTemplate),
         obsidianUseLlm: resultSync.obsidianUseLlm === true,
         obsidianLlmEndpoint: connection.endpoint,
         obsidianLlmModel: connection.model,

@@ -8,8 +8,22 @@
 
 import { parseTemplateSegments, applyFilters } from "./template-syntax.js"
 
+// Echo's naming convention, "2026-11-25 14-30 Title", where the quoted token is the AI
+// title when there is one and the meeting's own title otherwise.
 /** @type {ObsidianFileNameTemplate} */
-export const DEFAULT_FILENAME_TEMPLATE = '{{date}}-{{"a concise, engaging title for this meeting"|kebab}}-meeting-note'
+export const DEFAULT_FILENAME_TEMPLATE = '{{date}} {{time}} {{"a concise title"}}'
+
+// The default before Echo's convention. The settings form autosaved its default, so this
+// value in storage doesn't mean the user chose it.
+const LEGACY_DEFAULT_FILENAME_TEMPLATE = '{{date}}-{{"a concise, engaging title for this meeting"|kebab}}-meeting-note'
+
+/**
+ * @param {ObsidianFileNameTemplate | undefined | null} stored
+ * @returns {ObsidianFileNameTemplate}
+ */
+export function resolveFilenameTemplate(stored) {
+    return !stored || stored === LEGACY_DEFAULT_FILENAME_TEMPLATE ? DEFAULT_FILENAME_TEMPLATE : stored
+}
 
 // Conservative safety margin for a filename component (not a full path). Most
 // filesystems in practical use (APFS, ext4, NTFS) allow up to 255 bytes per path

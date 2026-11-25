@@ -394,9 +394,8 @@ describe("filename sanitization", () => {
     test("falls back to the default template when none is provided", () => {
         const meeting = makeMeeting()
         const filename = buildFilename(undefined, meeting)
-        // No aiTitle supplied -> falls back to the raw meeting title, but the default
-        // template's quoted segment still applies its own |kebab filter to it.
-        assert.ok(filename.includes("team-sync"))
+        // No aiTitle supplied -> falls back to the raw meeting title.
+        assert.match(filename, /^\d{4}-\d\d-\d\d \d\d-\d\d Team sync\.md$/)
     })
 
     test("a bare variable (no filters) is unaffected by another segment's filter in the same template", () => {

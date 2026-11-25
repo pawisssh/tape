@@ -61,9 +61,11 @@ unmodified from upstream behavior.
    root. Tape does not create folders — Obsidian will silently fail to place
    the note in a non-existent folder (behavior depends on your Obsidian version), so
    create the folder in Obsidian first if you use one.
-5. In **Filename template**, leave the default `{{date}} - {{title}}`, or try a more
-   descriptive one for this test, e.g. `{{date}} {{time}} {{title}} {{software}}`.
-   Available tokens: `{{date}}`, `{{time}}`, `{{title}}`, `{{software}}`.
+5. In Settings → Files, leave **Filename template** at its default, or try
+   `{{date}} {{time}} {{title}} {{platform}}`. Also choose a **Save location** and allow
+   it on every visit, restart Chrome, then end a meeting with the Meetings page closed:
+   the .md lands in that folder (or Downloads/Tape, with **Allow access** shown in
+   Settings, if Chrome dropped the permission).
 6. Click **Save**. You should see an "Obsidian settings saved!" alert.
 7. Check **"Automatically save transcript to Obsidian, after each meeting"**. If you
    see an alert asking you to save a vault name first, go back to step 6 and confirm the

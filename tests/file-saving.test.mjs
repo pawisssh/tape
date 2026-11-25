@@ -55,33 +55,33 @@ const { downloadTranscript } = await import("../extension/background-script/expo
 const { cleanFileTitle } = await import("../extension/obsidian/file-title.js")
 const { resolveFilenameTemplate, DEFAULT_FILENAME_TEMPLATE } = await import("../extension/obsidian/markdown.js")
 
-test("txt uses Echo's date, time and title naming in Downloads/Tape", async () => {
+test("md uses Echo's date, time and title naming in Downloads/Tape", async () => {
     await downloadTranscript(0)
-    assert.equal(downloads[0].filename, "Tape/2026-11-25 14-30 Team sync_ Q4.txt")
+    assert.equal(downloads[0].filename, "Tape/2026-11-25 14-30 Team sync_ Q4.md")
     assert.match(decodeURIComponent(downloads[0].url), /สวัสดี launch/)
 })
 test("the AI summary title names the file, without its date", async () => {
     local.meetings[0].llmSummaryTitle = "2026-11-25-Launch plan"
     await downloadTranscript(0)
-    assert.equal(downloads[0].filename, "Tape/2026-11-25 14-30 Launch plan.txt")
+    assert.equal(downloads[0].filename, "Tape/2026-11-25 14-30 Launch plan.md")
 })
 test("the chosen folder is written to without replacing a file", async () => {
-    const files = { "2026-11-25 14-30 Team sync_ Q4.txt": "old" }
+    const files = { "2026-11-25 14-30 Team sync_ Q4.md": "old" }
     folder = fakeFolder(files)
     await downloadTranscript(0)
     assert.equal(downloads.length, 0)
-    assert.equal(files["2026-11-25 14-30 Team sync_ Q4.txt"], "old")
-    assert.match(files["2026-11-25 14-30 Team sync_ Q4 (2).txt"], /launch/)
+    assert.equal(files["2026-11-25 14-30 Team sync_ Q4.md"], "old")
+    assert.match(files["2026-11-25 14-30 Team sync_ Q4 (2).md"], /launch/)
 })
 test("a lapsed folder permission falls back to Downloads and says so", async () => {
     folder = fakeFolder({}, "prompt")
     assert.match(await downloadTranscript(0), /needs access again/)
     assert.equal(downloads.length, 1)
 })
-test("a rejected name falls back to Transcript.txt", async () => {
+test("a rejected name falls back to Transcript.md", async () => {
     sync.obsidianFileNameTemplate = "BAD"
     await downloadTranscript(0)
-    assert.equal(downloads[1].filename, "Tape/Transcript.txt")
+    assert.equal(downloads[1].filename, "Tape/Transcript.md")
 })
 test("the autosaved old default migrates, a custom template stays", () => {
     assert.equal(resolveFilenameTemplate('{{date}}-{{"a concise, engaging title for this meeting"|kebab}}-meeting-note'), DEFAULT_FILENAME_TEMPLATE)

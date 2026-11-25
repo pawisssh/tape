@@ -102,7 +102,7 @@ export default function FilesSettings() {
                 ) : null}
             </div>
             <p className="mt-2 text-xs text-meetings-ink-muted">
-                Applies to .txt transcripts. Choose "Allow on every visit" if Chrome asks, so saving keeps working after a
+                Applies to .md transcript downloads. Choose "Allow on every visit" if Chrome asks, so saving keeps working after a
                 restart. Obsidian notes go to the vault folder set in Integrations.
             </p>
 
@@ -119,10 +119,10 @@ export default function FilesSettings() {
                 onBlur={saveTemplate}
             />
             <p className="mt-1 text-xs break-all text-meetings-ink-muted">
-                Example: {buildFilename(template?.trim() || DEFAULT_FILENAME_TEMPLATE, EXAMPLE_MEETING, { extension: ".txt" })}
+                Example: {buildFilename(template?.trim() || DEFAULT_FILENAME_TEMPLATE, EXAMPLE_MEETING)}
             </p>
             <p className="mt-1 text-xs text-meetings-ink-muted">
-                Used for .txt transcripts and Obsidian notes. Tokens: {"{{date}} {{time}} {{title}} {{platform}}"}. A quoted
+                Used for transcript downloads and Obsidian notes. Tokens: {"{{date}} {{time}} {{title}} {{platform}}"}. A quoted
                 token such as {'{{"a concise title"}}'} uses the AI title, or the meeting's own title when there is none.
                 Filters work too, e.g. {'{{"a concise title"|kebab}}'}.
             </p>

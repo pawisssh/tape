@@ -15,7 +15,6 @@ async function saveTranscriptFile(meeting, content) {
     const { obsidianFileNameTemplate } = await chrome.storage.sync.get(["obsidianFileNameTemplate"])
     const filename = buildFilename(resolveFilenameTemplate(/** @type {string | undefined} */ (obsidianFileNameTemplate)), meeting, {
         aiTitle: cleanFileTitle(meeting.llmSummaryTitle),
-        extension: ".txt",
     })
 
     const outcome = await writeToSaveFolder(filename, content)
@@ -23,12 +22,12 @@ async function saveTranscriptFile(meeting, content) {
         return "Transcript saved to the chosen folder"
     }
 
-    const url = `data:text/plain;charset=utf-8,${encodeURIComponent(content)}`
+    const url = `data:text/markdown;charset=utf-8,${encodeURIComponent(content)}`
     try {
         await chrome.downloads.download({ url, filename: `Tape/${filename}`, conflictAction: "uniquify" })
     } catch (err) {
         console.error(err)
-        await chrome.downloads.download({ url, filename: "Tape/Transcript.txt", conflictAction: "uniquify" })
+        await chrome.downloads.download({ url, filename: "Tape/Transcript.md", conflictAction: "uniquify" })
     }
     return outcome === "unavailable"
         ? "Saved to Downloads/Tape: the chosen folder needs access again (Settings → Files)"

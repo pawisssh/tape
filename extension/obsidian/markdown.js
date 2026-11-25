@@ -32,10 +32,10 @@ export function resolveFilenameTemplate(stored) {
 // limits further up the chain that this module has no visibility into. Judgment call —
 // no authoritative single number exists; flagged for tech-lead review per task instructions.
 const MAX_FILENAME_LENGTH = 200
-const DEFAULT_FILE_EXTENSION = ".md"
+const FILE_EXTENSION = ".md"
 
 // Adapted from upstream's `invalidFilenameRegex` (extension/background-script/exporters.js)
-// so filename sanitization stays consistent between the .txt export path and the new
+// so filename sanitization stays consistent between the download export path and the new
 // Obsidian .md export path. Strips characters illegal in Windows/macOS/Linux filenames,
 // leading/trailing dots and whitespace-like separators (including Unicode line/paragraph/
 // space separators and the NUL char), and Windows reserved device names
@@ -143,7 +143,7 @@ export function formatElapsedTime(startIso, eventIso) {
 }
 
 /**
- * Build the destination filename (including the extension, .md by default) from a template.
+ * Build the destination filename (including the .md extension) from a template.
  * Each token's *resolved* value is sanitized individually before substitution (so a "/"
  * or ":" inside a meeting title never becomes a path separator or otherwise corrupts the
  * template's intended structure), and the fully-substituted result is sanitized again
@@ -165,11 +165,10 @@ export function formatElapsedTime(startIso, eventIso) {
  * segment's own filters (e.g. `|kebab`) still applied to whichever value it resolved to.
  * @param {ObsidianFileNameTemplate | undefined | null} template
  * @param {Meeting} meeting
- * @param {{aiTitle?: string, extension?: string}} [options]
+ * @param {{aiTitle?: string}} [options]
  * @returns {string}
  */
 export function buildFilename(template, meeting, options) {
-    const extension = options?.extension || DEFAULT_FILE_EXTENSION
     const effectiveTemplate = template || DEFAULT_FILENAME_TEMPLATE
 
     /** @type {Record<string, string>} */
@@ -200,7 +199,7 @@ export function buildFilename(template, meeting, options) {
         result = "Meeting"
     }
 
-    const maxBaseLength = MAX_FILENAME_LENGTH - extension.length
+    const maxBaseLength = MAX_FILENAME_LENGTH - FILE_EXTENSION.length
     if (result.length > maxBaseLength) {
         result = result.slice(0, maxBaseLength)
         // Truncation can leave a new trailing dot/space that was legal mid-string but
@@ -211,7 +210,7 @@ export function buildFilename(template, meeting, options) {
         }
     }
 
-    return `${result}${extension}`
+    return `${result}${FILE_EXTENSION}`
 }
 
 /**

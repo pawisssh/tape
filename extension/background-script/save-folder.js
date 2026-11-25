@@ -51,7 +51,7 @@ export function clearSaveFolder() {
 }
 
 /**
- * First free name: "name.txt", then "name (2).txt", "name (3).txt"…
+ * First free name: "name.md", then "name (2).md", "name (3).md"…
  * @param {any} folder FileSystemDirectoryHandle
  * @param {string} filename
  * @returns {Promise<string>}

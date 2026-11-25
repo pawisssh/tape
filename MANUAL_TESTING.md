@@ -64,7 +64,7 @@ unmodified from upstream behavior.
 5. In Settings → Files, leave **Filename template** at its default, or try
    `{{date}} {{time}} {{title}} {{platform}}`. Also choose a **Save location** and allow
    it on every visit, restart Chrome, then end a meeting with the Meetings page closed:
-   the .txt lands in that folder (or Downloads/Tape, with **Allow access** shown in
+   the .md lands in that folder (or Downloads/Tape, with **Allow access** shown in
    Settings, if Chrome dropped the permission).
 6. Click **Save**. You should see an "Obsidian settings saved!" alert.
 7. Check **"Automatically save transcript to Obsidian, after each meeting"**. If you
@@ -98,9 +98,9 @@ unmodified from upstream behavior.
       absent (not present-but-empty).
 11. Confirm the meetings page (`meetings.html`) shows this meeting's row with an
     **"Obsidian status"** column reading **"Sent"** shortly after the handoff.
-12. Confirm the `.txt` transcript **still downloaded** as usual (Obsidian export must
+12. Confirm the `.md` transcript **still downloaded** as usual (Obsidian export must
     never replace or block the existing download fallback) — unless you had also
-    turned off "Automatically download transcript text file" elsewhere in the settings,
+    turned off "Automatically download transcript Markdown file" elsewhere in the settings,
     in which case this is expected to be skipped.
 
 ### Step C: repeat the "Always allow" check

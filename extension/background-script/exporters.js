@@ -1,5 +1,42 @@
 import { getTranscriptString, getChatMessagesString } from './utils.js'
 import { TIMEFORMAT } from './config.js'
+import { buildFilename, resolveFilenameTemplate } from '../obsidian/markdown.js'
+import { resolveFileTitle } from '../obsidian/file-title.js'
+import { writeToSaveFolder } from './save-folder.js'
+
+/**
+ * Saves to the folder picked in Settings, or to Downloads/Tape when none is picked or it
+ * can't be written right now: a transcript is never lost to a lapsed permission.
+ * @param {Meeting} meeting
+ * @param {string} content
+ * @returns {Promise<string>}
+ */
+async function saveTranscriptFile(meeting, content) {
+    const [{ obsidianFileNameTemplate }, aiTitle] = await Promise.all([
+        chrome.storage.sync.get(["obsidianFileNameTemplate"]),
+        resolveFileTitle(meeting),
+    ])
+    const filename = buildFilename(resolveFilenameTemplate(/** @type {string | undefined} */ (obsidianFileNameTemplate)), meeting, {
+        aiTitle,
+        extension: ".txt",
+    })
+
+    const outcome = await writeToSaveFolder(filename, content)
+    if (outcome === "saved") {
+        return "Transcript saved to the chosen folder"
+    }
+
+    const url = `data:text/plain;charset=utf-8,${encodeURIComponent(content)}`
+    try {
+        await chrome.downloads.download({ url, filename: `Tape/${filename}`, conflictAction: "uniquify" })
+    } catch (err) {
+        console.error(err)
+        await chrome.downloads.download({ url, filename: "Tape/Transcript.txt", conflictAction: "uniquify" })
+    }
+    return outcome === "unavailable"
+        ? "Saved to Downloads/Tape: the chosen folder needs access again (Settings → Files)"
+        : "Transcript downloaded successfully"
+}
 
 /**
  * @param {number} index
@@ -14,26 +51,6 @@ export function downloadTranscript(index, isWebhookEnabled) {
             if (resultLocal.meetings && resultLocal.meetings[index]) {
                 const meeting = resultLocal.meetings[index]
 
-                // Sanitise meeting title to prevent invalid file name errors
-                // https://stackoverflow.com/a/78675894
-                const invalidFilenameRegex = /[:?"*<>|~/\\\u{1}-\u{1f}\u{7f}\u{80}-\u{9f}\p{Cf}\p{Cn}]|^[.\u{0}\p{Zl}\p{Zp}\p{Zs}]|[.\u{0}\p{Zl}\p{Zp}\p{Zs}]$|^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(?=\.|$)/gui
-                let sanitisedMeetingTitle = "Meeting"
-                if (meeting.meetingTitle) {
-                    sanitisedMeetingTitle = meeting.meetingTitle.replaceAll(invalidFilenameRegex, "_")
-                }
-                else if (meeting.title) {
-                    sanitisedMeetingTitle = meeting.title.replaceAll(invalidFilenameRegex, "_")
-                }
-
-                // Format timestamp for human-readable filename and sanitise to prevent invalid filenames
-                const timestamp = new Date(meeting.meetingStartTimestamp)
-                const formattedTimestamp = timestamp.toLocaleString("default", TIMEFORMAT).replace(/[\/:]/g, "-")
-
-                const prefix = meeting.meetingSoftware ? `${meeting.meetingSoftware} transcript` : "Transcript"
-
-                const fileName = `Tape/${prefix}-${sanitisedMeetingTitle} at ${formattedTimestamp} on.txt`
-
-
                 // Format transcript and chatMessages content
                 let content = getTranscriptString(meeting.transcript)
                 if (meeting.chatMessages && meeting.chatMessages.length > 0) {
@@ -41,44 +58,10 @@ export function downloadTranscript(index, isWebhookEnabled) {
                     content += getChatMessagesString(meeting.chatMessages)
                 }
 
-                const blob = new Blob([content], { type: "text/plain" })
-
-                // Read the blob as a data URL
-                const reader = new FileReader()
-
-                // Read the blob
-                reader.readAsDataURL(blob)
-
-                // Download as text file, once blob is read
-                reader.onload = function (event) {
-                    if (event.target?.result) {
-                        const dataUrl = event.target.result
-
-                        // Create a download with Chrome Download API
-                        chrome.downloads.download({
-                            // @ts-ignore
-                            url: dataUrl,
-                            filename: fileName,
-                            conflictAction: "uniquify"
-                        }).then(() => {
-                            console.log("Transcript downloaded")
-                            resolve("Transcript downloaded successfully")
-                        }).catch((err) => {
-                            console.error(err)
-                            chrome.downloads.download({
-                                // @ts-ignore
-                                url: dataUrl,
-                                filename: "Tape/Transcript.txt",
-                                conflictAction: "uniquify"
-                            })
-                            console.log("Invalid file name. Transcript downloaded to Tape directory with simple file name.")
-                            resolve("Transcript downloaded successfully with default file name")
-                        })
-                    }
-                    else {
-                        reject({ errorCode: "009", errorMessage: "Failed to read blob" })
-                    }
-                }
+                saveTranscriptFile(meeting, content).then(resolve, (err) => {
+                    console.error(err)
+                    reject({ errorCode: "009", errorMessage: "Failed to save transcript file" })
+                })
             }
             else {
                 reject({ errorCode: "010", errorMessage: "Meeting at specified index not found" })

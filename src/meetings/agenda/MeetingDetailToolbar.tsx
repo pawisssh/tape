@@ -93,6 +93,9 @@ export default function MeetingDetailToolbar({
 
     function handleDownload() {
         sendMessage({ type: "download_transcript_at_index", index }).then((response) => {
+            if (response.success && typeof response.message === "string") {
+                toast.add({ title: response.message, type: "success" })
+            }
             if (!response.success) {
                 toast.add({ title: "Could not download transcript", type: "error" })
                 const parsedError = asErrorObject(response.message)

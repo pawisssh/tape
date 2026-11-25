@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button"
 import { getSync, setSync, onStorageChanged } from "@/lib/chrome-storage"
 import { useDebouncedEffect } from "@/hooks/use-debounced-effect"
 import { cn } from "@/lib/utils"
+import FilesSettings from "./FilesSettings"
 import MasterDetailLayout from "../components/MasterDetailLayout"
 import MobileBackButton from "../components/MobileBackButton"
 // Framework-free logic module, imported directly — never duplicated into src/. See
@@ -22,10 +23,11 @@ import { OUTPUT_LANGUAGES, normalizeOutputLanguage } from "../../../extension/ob
 
 const DEFAULT_LLM_TIMEOUT_MS = 600000
 
-type SettingsCategory = "capture" | "ai" | "about"
+type SettingsCategory = "capture" | "files" | "ai" | "about"
 
 const CATEGORIES: { id: SettingsCategory; label: string; description: string }[] = [
     { id: "capture", label: "Capture mode", description: "How Tape decides when to start capturing a transcript." },
+    { id: "files", label: "Files", description: "Where transcript files are saved and how they are named." },
     { id: "ai", label: "AI summary", description: "AI output language, plus the LLM summary added to the note handed off to Obsidian." },
     { id: "about", label: "About", description: "Version and links." },
 ]
@@ -211,6 +213,8 @@ export default function SettingsView() {
                                 </Label>
                             </div>
                         </div>
+                    ) : activeCategory === "files" ? (
+                        <FilesSettings />
                     ) : activeCategory === "ai" ? (
                         <div>
                             <p className="font-bold text-meetings-ink">Output language</p>

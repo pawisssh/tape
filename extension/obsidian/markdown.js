@@ -8,8 +8,22 @@
 
 import { parseTemplateSegments, applyFilters } from "./template-syntax.js"
 
+// Echo's naming convention, "2026-11-25 14-30 Title", where the quoted token is the AI
+// title when there is one and the meeting's own title otherwise.
 /** @type {ObsidianFileNameTemplate} */
-export const DEFAULT_FILENAME_TEMPLATE = '{{date}}-{{"a concise, engaging title for this meeting"|kebab}}-meeting-note'
+export const DEFAULT_FILENAME_TEMPLATE = '{{date}} {{time}} {{"a concise title"}}'
+
+// The default before Echo's convention. The settings form autosaved its default, so this
+// value in storage doesn't mean the user chose it.
+const LEGACY_DEFAULT_FILENAME_TEMPLATE = '{{date}}-{{"a concise, engaging title for this meeting"|kebab}}-meeting-note'
+
+/**
+ * @param {ObsidianFileNameTemplate | undefined | null} stored
+ * @returns {ObsidianFileNameTemplate}
+ */
+export function resolveFilenameTemplate(stored) {
+    return !stored || stored === LEGACY_DEFAULT_FILENAME_TEMPLATE ? DEFAULT_FILENAME_TEMPLATE : stored
+}
 
 // Conservative safety margin for a filename component (not a full path). Most
 // filesystems in practical use (APFS, ext4, NTFS) allow up to 255 bytes per path
@@ -18,7 +32,7 @@ export const DEFAULT_FILENAME_TEMPLATE = '{{date}}-{{"a concise, engaging title 
 // limits further up the chain that this module has no visibility into. Judgment call —
 // no authoritative single number exists; flagged for tech-lead review per task instructions.
 const MAX_FILENAME_LENGTH = 200
-const FILE_EXTENSION = ".md"
+const DEFAULT_FILE_EXTENSION = ".md"
 
 // Adapted from upstream's `invalidFilenameRegex` (extension/background-script/exporters.js)
 // so filename sanitization stays consistent between the .txt export path and the new
@@ -129,7 +143,7 @@ export function formatElapsedTime(startIso, eventIso) {
 }
 
 /**
- * Build the destination filename (including the .md extension) from a template.
+ * Build the destination filename (including the extension, .md by default) from a template.
  * Each token's *resolved* value is sanitized individually before substitution (so a "/"
  * or ":" inside a meeting title never becomes a path separator or otherwise corrupts the
  * template's intended structure), and the fully-substituted result is sanitized again
@@ -151,10 +165,11 @@ export function formatElapsedTime(startIso, eventIso) {
  * segment's own filters (e.g. `|kebab`) still applied to whichever value it resolved to.
  * @param {ObsidianFileNameTemplate | undefined | null} template
  * @param {Meeting} meeting
- * @param {{aiTitle?: string}} [options]
+ * @param {{aiTitle?: string, extension?: string}} [options]
  * @returns {string}
  */
 export function buildFilename(template, meeting, options) {
+    const extension = options?.extension || DEFAULT_FILE_EXTENSION
     const effectiveTemplate = template || DEFAULT_FILENAME_TEMPLATE
 
     /** @type {Record<string, string>} */
@@ -185,7 +200,7 @@ export function buildFilename(template, meeting, options) {
         result = "Meeting"
     }
 
-    const maxBaseLength = MAX_FILENAME_LENGTH - FILE_EXTENSION.length
+    const maxBaseLength = MAX_FILENAME_LENGTH - extension.length
     if (result.length > maxBaseLength) {
         result = result.slice(0, maxBaseLength)
         // Truncation can leave a new trailing dot/space that was legal mid-string but
@@ -196,7 +211,7 @@ export function buildFilename(template, meeting, options) {
         }
     }
 
-    return `${result}${FILE_EXTENSION}`
+    return `${result}${extension}`
 }
 
 /**

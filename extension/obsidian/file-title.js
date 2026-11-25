@@ -83,14 +83,14 @@ export async function requestFoundationModelTitle(excerpt, meetingTitle, outputL
 }
 
 /**
- * The AI title for a meeting's files: the summary's, else one generated earlier, else a
+ * The AI title for a meeting's files: one generated earlier (so .txt and .md match), else the summary's, else a
  * new one when the setting is on. Never rejects.
  * @param {Meeting} meeting
  * @returns {Promise<string | undefined>}
  */
 export async function resolveFileTitle(meeting) {
     try {
-        const existing = cleanFileTitle(meeting.llmSummaryTitle) || meeting.fileTitle
+        const existing = meeting.fileTitle || cleanFileTitle(meeting.llmSummaryTitle)
         if (existing) return existing
         const settings = await chrome.storage.sync.get(["useFoundationModelTitles", "outputLanguage"])
         const excerpt = titleExcerpt(meeting)
